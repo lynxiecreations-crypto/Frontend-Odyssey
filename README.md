@@ -1,17 +1,3 @@
-# 🌌 Frontend Odyssey
-
-20 genuinely useful front-end apps — no frameworks, no build step, just HTML, CSS, and JavaScript. Every project is a single self-contained `.html` file you can open directly in a browser or deploy anywhere in seconds.
-
-Split into **4 levels**, five apps each, increasing in depth — from a password generator to a live weather dashboard pulling real data, to a full analytics dashboard with a synthesized audio-reactive interface.
-
-```
-Frontend-Odyssey/
-├── Level-1-Novice/          → focused single-purpose tools
-├── Level-2-Apprentice/      → localStorage, audio, richer interactivity
-├── Level-3-Adept/           → real external APIs, drag & drop, full apps
-├── Level-4-Mastermind/      → live dashboards, MediaRecorder, generated audio
-└── README.md
-```
 
 ## 🗺️ The Map
 
@@ -63,15 +49,8 @@ open unit-converter.html   # or just double-click it
 
 ## 🌐 Deploying
 
-Every file is static and self-contained, so any of these work with zero configuration:
+Every file is static and self-contained — the GitHub repo itself is enough to run or share any app. Want a live link instead of just the code? Turn on GitHub Pages .
 
-- **Netlify** — drag the whole folder onto [app.netlify.com/drop](https://app.netlify.com/drop)
-- **Vercel** — `vercel` inside the repo folder
-- **GitHub Pages** — see `HOW-TO-PUBLISH.md`
-
-## 📦 Publishing this repo to GitHub
-
-See `HOW-TO-PUBLISH.md` for the exact commands to push this to your repository.
 
 ## 🛠️ Built with
 
