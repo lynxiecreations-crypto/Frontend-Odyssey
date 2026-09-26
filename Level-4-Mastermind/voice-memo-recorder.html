@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Echo — Voice Memo Recorder</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:36px 20px;
+    font-family:'Segoe UI', system-ui, sans-serif; color:#eef;
+    background:linear-gradient(160deg,#1a1030,#0d0818);
+  }
+  h1{ margin:0 0 4px; font-size:22px;
+    background:linear-gradient(90deg,#a78bfa,#f472b6);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  p.sub{ margin:0 0 28px; color:#8888b0; font-size:13.5px; text-align:center; max-width:420px; }
+
+  .recorder{
+    width:100%; max-width:440px; background:rgba(255,255,255,.04); border:1px solid rgba(167,139,250,.15);
+    border-radius:20px; padding:26px; text-align:center;
+  }
+  canvas{ width:100%; height:100px; background:#08050f; border-radius:12px; margin-bottom:20px; }
+  .rec-time{ font-size:32px; font-weight:200; font-variant-numeric:tabular-nums; margin-bottom:18px; }
+  .rec-btn{
+    width:70px; height:70px; border-radius:50%; border:none; cursor:pointer; font-size:26px;
+    background:linear-gradient(135deg,#f472b6,#a78bfa); color:#fff;
+    box-shadow:0 0 30px rgba(244,114,182,.3);
+  }
+  .rec-btn.recording{ animation:pulseRec 1.4s ease-in-out infinite; }
+  @keyframes pulseRec{ 0%,100%{box-shadow:0 0 30px rgba(244,114,182,.3);} 50%{box-shadow:0 0 50px rgba(244,114,182,.6);} }
+  .status{ margin-top:14px; font-size:12.5px; color:#8888b0; }
+
+  .memos{ width:100%; max-width:440px; margin-top:24px; }
+  .memos h3{ font-size:12.5px; color:#8888b0; text-transform:uppercase; letter-spacing:.04em; margin-bottom:12px; }
+  .memo-item{
+    background:rgba(255,255,255,.03); border:1px solid rgba(167,139,250,.1); border-radius:14px;
+    padding:14px 16px; margin-bottom:10px; display:flex; align-items:center; gap:12px;
+  }
+  .memo-item button.play{
+    width:36px; height:36px; border-radius:50%; border:none; background:rgba(167,139,250,.2); color:#a78bfa;
+    cursor:pointer; font-size:14px; flex:none;
+  }
+  .memo-item button.play:hover{ background:rgba(167,139,250,.35); }
+  .memo-meta{ flex:1; text-align:left; }
+  .memo-meta .name{ font-size:13.5px; font-weight:600; }
+  .memo-meta .date{ font-size:11px; color:#8888b0; }
+  .memo-actions{ display:flex; gap:6px; }
+  .memo-actions button{
+    background:none; border:none; color:#8888b0; cursor:pointer; font-size:14px;
+  }
+  .memo-actions button:hover{ color:#f472b6; }
+  .empty{ color:#8888b0; font-size:13px; text-align:center; padding:20px 0; }
+  .permission-hint{ font-size:12px; color:#6a6a90; margin-top:16px; max-width:360px; text-align:center; }
+</style>
+</head>
+<body>
+  <h1>ECHO</h1>
+  <p class="sub">Record voice memos directly in your browser — waveform preview, playback, and download. Nothing is uploaded anywhere.</p>
+
+  <div class="recorder">
+    <canvas id="waveform" width="400" height="100"></canvas>
+    <div class="rec-time" id="recTime">00:00</div>
+    <button class="rec-btn" id="recBtn">🎙</button>
+    <div class="status" id="status">Tap to start recording</div>
+  </div>
+
+  <div class="memos">
+    <h3>Your memos</h3>
+    <div id="memoList"></div>
+  </div>
+
+  <p class="permission-hint">Your browser will ask for microphone permission the first time you record. Audio stays local — nothing leaves this page.</p>
+
+<script>
+(function(){
+  let mediaRecorder, audioChunks = [], stream, audioCtx, analyser, rafId;
+  let recording = false;
+  let startTime;
+  let timerInterval;
+  let memos = [];
+
+  const recBtn = document.getElementById('recBtn');
+  const statusEl = document.getElementById('status');
+  const recTimeEl = document.getElementById('recTime');
+  const canvas = document.getElementById('waveform');
+  const ctx = canvas.getContext('2d');
+
+  function fmtTime(ms){
+    const s = Math.floor(ms/1000);
+    const m = Math.floor(s/60).toString().padStart(2,'0');
+    const sec = (s%60).toString().padStart(2,'0');
+    return `${m}:${sec}`;
+  }
+
+  async function startRecording(){
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    }catch(e){
+      statusEl.textContent = 'Microphone access denied.';
+      return;
+    }
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (e)=> audioChunks.push(e.data);
+    mediaRecorder.onstop = ()=>{
+      const blob = new Blob(audioChunks, { type:'audio/webm' });
+      const url = URL.createObjectURL(blob);
+      memos.unshift({ id: Date.now(), url, name: `Memo ${memos.length+1}`, date: new Date().toLocaleString(), duration: Date.now()-startTime });
+      renderMemos();
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    mediaRecorder.start();
+
+    // live waveform via analyser
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    drawWave();
+
+    recording = true;
+    recBtn.classList.add('recording');
+    recBtn.textContent = '⏹';
+    statusEl.textContent = 'Recording...';
+    startTime = Date.now();
+    timerInterval = setInterval(()=>{
+      recTimeEl.textContent = fmtTime(Date.now()-startTime);
+    }, 200);
+  }
+
+  function stopRecording(){
+    if(mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+    recording = false;
+    recBtn.classList.remove('recording');
+    recBtn.textContent = '🎙';
+    statusEl.textContent = 'Tap to start recording';
+    clearInterval(timerInterval);
+    recTimeEl.textContent = '00:00';
+    cancelAnimationFrame(rafId);
+    if(audioCtx) audioCtx.close();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  }
+
+  function drawWave(){
+    rafId = requestAnimationFrame(drawWave);
+    const bufferLength = analyser.fftSize;
+    const dataArray = new Uint8Array(bufferLength);
+    analyser.getByteTimeDomainData(dataArray);
+    ctx.fillStyle = '#08050f';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#f472b6';
+    ctx.beginPath();
+    const slice = canvas.width/bufferLength;
+    let x = 0;
+    for(let i=0;i<bufferLength;i++){
+      const v = dataArray[i]/128;
+      const y = v*canvas.height/2;
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+      x += slice;
+    }
+    ctx.stroke();
+  }
+
+  recBtn.addEventListener('click', ()=> recording ? stopRecording() : startRecording());
+
+  function renderMemos(){
+    const listEl = document.getElementById('memoList');
+    listEl.innerHTML = '';
+    if(memos.length === 0){
+      listEl.innerHTML = '<div class="empty">No memos yet — record your first above.</div>';
+      return;
+    }
+    memos.forEach(memo=>{
+      const div = document.createElement('div');
+      div.className = 'memo-item';
+      div.innerHTML = `
+        <button class="play" data-id="${memo.id}">▶</button>
+        <div class="memo-meta">
+          <div class="name">${memo.name}</div>
+          <div class="date">${memo.date} · ${fmtTime(memo.duration)}</div>
+        </div>
+        <div class="memo-actions">
+          <button class="download" data-id="${memo.id}" title="Download">⬇</button>
+          <button class="delete" data-id="${memo.id}" title="Delete">🗑</button>
+        </div>
+      `;
+      listEl.appendChild(div);
+    });
+
+    listEl.querySelectorAll('.play').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const memo = memos.find(m=>m.id===Number(btn.dataset.id));
+        const audio = new Audio(memo.url);
+        audio.play();
+        btn.textContent = '⏸';
+        audio.onended = ()=> btn.textContent = '▶';
+      });
+    });
+    listEl.querySelectorAll('.download').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const memo = memos.find(m=>m.id===Number(btn.dataset.id));
+        const link = document.createElement('a');
+        link.href = memo.url;
+        link.download = memo.name + '.webm';
+        link.click();
+      });
+    });
+    listEl.querySelectorAll('.delete').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        memos = memos.filter(m=>m.id !== Number(btn.dataset.id));
+        renderMemos();
+      });
+    });
+  }
+
+  renderMemos();
+})();
+</script>
+</body>
+</html>

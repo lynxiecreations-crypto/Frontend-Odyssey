@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resume Builder — Live Preview</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; display:flex; font-family:'Segoe UI', system-ui, sans-serif;
+    background:#eef0f5; color:#1e2333;
+  }
+  .form-panel{
+    width:420px; flex:none; background:#fff; border-right:1px solid #e2e5ee; padding:24px; overflow-y:auto; height:100vh;
+  }
+  .form-panel h1{ font-size:18px; margin:0 0 4px; }
+  .form-panel p.sub{ margin:0 0 20px; color:#8a92ab; font-size:12.5px; }
+  fieldset{ border:none; padding:0; margin:0 0 20px; }
+  legend{ font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:#5d6684; margin-bottom:10px; font-weight:600; }
+  label{ display:block; font-size:12px; color:#8a92ab; margin:10px 0 4px; }
+  input, textarea{
+    width:100%; padding:9px 11px; border-radius:8px; border:1px solid #e2e5ee; font-family:inherit; font-size:13.5px; outline:none;
+  }
+  input:focus, textarea:focus{ border-color:#3a5ccc; }
+  textarea{ resize:vertical; min-height:60px; }
+  .entry-block{ border:1px solid #f0f1f6; border-radius:10px; padding:12px; margin-bottom:10px; position:relative; }
+  .entry-block .remove{
+    position:absolute; top:8px; right:8px; background:none; border:none; color:#c3c9db; cursor:pointer; font-size:14px;
+  }
+  .entry-block .remove:hover{ color:#e0555a; }
+  button.add-entry{
+    width:100%; padding:9px; border-radius:8px; border:1px dashed #c8cde0; background:#f8f9fc; color:#5d6684;
+    cursor:pointer; font-size:12.5px; margin-top:4px;
+  }
+  button.add-entry:hover{ background:#eef0f8; }
+  .print-btn{
+    width:100%; padding:13px; border:none; border-radius:10px; background:#1e2333; color:#fff; cursor:pointer;
+    font-size:14px; font-weight:600; margin-top:10px;
+  }
+  .print-btn:hover{ background:#2c3350; }
+  .theme-row{ display:flex; gap:8px; }
+  .theme-swatch{
+    width:30px; height:30px; border-radius:50%; cursor:pointer; border:2px solid transparent;
+  }
+  .theme-swatch.active{ border-color:#1e2333; }
+
+  .preview-panel{ flex:1; padding:40px; overflow-y:auto; display:flex; justify-content:center; height:100vh; }
+  #resumePaper{
+    width:210mm; min-height:297mm; background:#fff; box-shadow:0 20px 50px rgba(30,40,70,.15); padding:20mm;
+    font-family:'Georgia', serif; color:#1e2333;
+  }
+  #resumePaper h1{ margin:0; font-size:26px; }
+  #resumePaper .contact{ font-size:12px; color:#666; margin-top:4px; }
+  #resumePaper .role{ font-size:14px; color:var(--accent, #3a5ccc); margin-top:2px; font-weight:600; }
+  #resumePaper section{ margin-top:20px; }
+  #resumePaper h2{
+    font-size:12.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent, #3a5ccc);
+    border-bottom:1px solid #e2e5ee; padding-bottom:4px; margin:0 0 10px;
+  }
+  #resumePaper .item{ margin-bottom:12px; }
+  #resumePaper .item .top-row{ display:flex; justify-content:space-between; font-size:13.5px; font-weight:700; }
+  #resumePaper .item .sub-row{ font-size:12px; color:#666; font-style:italic; margin-bottom:4px; }
+  #resumePaper .item p{ margin:0; font-size:12.5px; line-height:1.5; }
+  #resumePaper .skills{ display:flex; flex-wrap:wrap; gap:6px; }
+  #resumePaper .skill-pill{
+    font-size:11px; padding:3px 10px; border-radius:100px; background:#f0f1f6; color:#1e2333;
+  }
+  @media print{
+    .form-panel{ display:none; }
+    .preview-panel{ padding:0; height:auto; }
+    #resumePaper{ box-shadow:none; width:auto; min-height:0; }
+    body{ background:#fff; }
+  }
+</style>
+</head>
+<body>
+<div class="form-panel">
+  <h1>Resume Builder</h1>
+  <p class="sub">Fill in your details — the preview updates live. Print or save as PDF when ready.</p>
+
+  <fieldset>
+    <legend>Accent color</legend>
+    <div class="theme-row" id="themeRow"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Basics</legend>
+    <label>Full name</label>
+    <input type="text" id="name" value="Alex Rivera">
+    <label>Role / Title</label>
+    <input type="text" id="role" value="Frontend Developer">
+    <label>Contact line (email · phone · location)</label>
+    <input type="text" id="contact" value="alex@example.com · (555) 123-4567 · Remote">
+    <label>Summary</label>
+    <textarea id="summary">Frontend developer with 4+ years building fast, accessible web interfaces. Focused on clean code and thoughtful UX.</textarea>
+  </fieldset>
+
+  <fieldset>
+    <legend>Experience</legend>
+    <div id="experienceList"></div>
+    <button class="add-entry" id="addExperience">+ Add experience</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>Education</legend>
+    <div id="educationList"></div>
+    <button class="add-entry" id="addEducation">+ Add education</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>Skills (comma separated)</legend>
+    <input type="text" id="skills" value="JavaScript, React, CSS, Accessibility, Git, Figma">
+  </fieldset>
+
+  <button class="print-btn" id="printBtn">🖨 Print / Save as PDF</button>
+</div>
+
+<div class="preview-panel">
+  <div id="resumePaper"></div>
+</div>
+
+<script>
+(function(){
+  const themes = ['#3a5ccc','#c0392b','#1f9d6b','#8e44ad','#e07b1f','#222222'];
+  let accent = themes[0];
+
+  let experience = [
+    { title:'Senior Frontend Developer', company:'Nimbus Labs', period:'2023 — Present', desc:'Led rebuild of the core dashboard, improving load time by 40%. Mentored two junior developers.' },
+    { title:'Frontend Developer', company:'Brightpath', period:'2020 — 2023', desc:'Built and maintained customer-facing web apps used by 50k+ monthly users.' }
+  ];
+  let education = [
+    { school:'State University', degree:'B.S. Computer Science', period:'2016 — 2020' }
+  ];
+
+  function themeRow(){
+    const el = document.getElementById('themeRow');
+    el.innerHTML = '';
+    themes.forEach(c=>{
+      const sw = document.createElement('div');
+      sw.className = 'theme-swatch' + (c===accent ? ' active':'');
+      sw.style.background = c;
+      sw.addEventListener('click', ()=>{ accent = c; themeRow(); renderPreview(); });
+      el.appendChild(sw);
+    });
+  }
+
+  function renderExperienceForm(){
+    const el = document.getElementById('experienceList');
+    el.innerHTML = '';
+    experience.forEach((exp,i)=>{
+      const div = document.createElement('div');
+      div.className = 'entry-block';
+      div.innerHTML = `
+        <button class="remove" data-i="${i}">×</button>
+        <label>Job title</label><input type="text" data-f="title" data-i="${i}" value="${escapeAttr(exp.title)}">
+        <label>Company & period</label>
+        <input type="text" data-f="company" data-i="${i}" value="${escapeAttr(exp.company)}" placeholder="Company" style="margin-bottom:6px;">
+        <input type="text" data-f="period" data-i="${i}" value="${escapeAttr(exp.period)}" placeholder="2020 — 2023">
+        <label>Description</label><textarea data-f="desc" data-i="${i}">${exp.desc}</textarea>
+      `;
+      el.appendChild(div);
+    });
+    el.querySelectorAll('input,textarea').forEach(input=>{
+      input.addEventListener('input', ()=>{
+        experience[input.dataset.i][input.dataset.f] = input.value;
+        renderPreview();
+      });
+    });
+    el.querySelectorAll('.remove').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        experience.splice(Number(btn.dataset.i),1);
+        renderExperienceForm(); renderPreview();
+      });
+    });
+  }
+
+  function renderEducationForm(){
+    const el = document.getElementById('educationList');
+    el.innerHTML = '';
+    education.forEach((ed,i)=>{
+      const div = document.createElement('div');
+      div.className = 'entry-block';
+      div.innerHTML = `
+        <button class="remove" data-i="${i}">×</button>
+        <label>School</label><input type="text" data-f="school" data-i="${i}" value="${escapeAttr(ed.school)}">
+        <label>Degree & period</label>
+        <input type="text" data-f="degree" data-i="${i}" value="${escapeAttr(ed.degree)}" style="margin-bottom:6px;">
+        <input type="text" data-f="period" data-i="${i}" value="${escapeAttr(ed.period)}">
+      `;
+      el.appendChild(div);
+    });
+    el.querySelectorAll('input').forEach(input=>{
+      input.addEventListener('input', ()=>{
+        education[input.dataset.i][input.dataset.f] = input.value;
+        renderPreview();
+      });
+    });
+    el.querySelectorAll('.remove').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        education.splice(Number(btn.dataset.i),1);
+        renderEducationForm(); renderPreview();
+      });
+    });
+  }
+
+  function escapeHtml(str){ const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+  function escapeAttr(str){ return (str||'').replace(/"/g,'&quot;'); }
+
+  function renderPreview(){
+    const paper = document.getElementById('resumePaper');
+    paper.style.setProperty('--accent', accent);
+    const skills = document.getElementById('skills').value.split(',').map(s=>s.trim()).filter(Boolean);
+
+    paper.innerHTML = `
+      <h1>${escapeHtml(document.getElementById('name').value)}</h1>
+      <div class="role">${escapeHtml(document.getElementById('role').value)}</div>
+      <div class="contact">${escapeHtml(document.getElementById('contact').value)}</div>
+
+      <section>
+        <h2>Summary</h2>
+        <p style="font-size:12.5px; line-height:1.6; margin:0;">${escapeHtml(document.getElementById('summary').value)}</p>
+      </section>
+
+      <section>
+        <h2>Experience</h2>
+        ${experience.map(e=>`
+          <div class="item">
+            <div class="top-row"><span>${escapeHtml(e.title)}</span><span>${escapeHtml(e.period)}</span></div>
+            <div class="sub-row">${escapeHtml(e.company)}</div>
+            <p>${escapeHtml(e.desc)}</p>
+          </div>
+        `).join('')}
+      </section>
+
+      <section>
+        <h2>Education</h2>
+        ${education.map(e=>`
+          <div class="item">
+            <div class="top-row"><span>${escapeHtml(e.degree)}</span><span>${escapeHtml(e.period)}</span></div>
+            <div class="sub-row">${escapeHtml(e.school)}</div>
+          </div>
+        `).join('')}
+      </section>
+
+      <section>
+        <h2>Skills</h2>
+        <div class="skills">${skills.map(s=>`<span class="skill-pill">${escapeHtml(s)}</span>`).join('')}</div>
+      </section>
+    `;
+  }
+
+  ['name','role','contact','summary','skills'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', renderPreview);
+  });
+
+  document.getElementById('addExperience').addEventListener('click', ()=>{
+    experience.push({ title:'New role', company:'Company', period:'20XX — 20XX', desc:'Describe your impact here.' });
+    renderExperienceForm(); renderPreview();
+  });
+  document.getElementById('addEducation').addEventListener('click', ()=>{
+    education.push({ school:'School name', degree:'Degree', period:'20XX — 20XX' });
+    renderEducationForm(); renderPreview();
+  });
+
+  document.getElementById('printBtn').addEventListener('click', ()=> window.print());
+
+  themeRow();
+  renderExperienceForm();
+  renderEducationForm();
+  renderPreview();
+})();
+</script>
+</body>
+</html>

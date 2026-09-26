@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vault — Code Snippet Manager</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; height:100vh; display:flex; font-family:'Segoe UI', system-ui, sans-serif;
+    background:#0e0f14; color:#dcdfe8;
+  }
+  .sidebar{
+    width:280px; flex:none; background:#14151c; border-right:1px solid #23242e;
+    display:flex; flex-direction:column;
+  }
+  .sidebar-header{ padding:18px 16px 12px; }
+  .sidebar-header h1{ font-size:15px; margin:0 0 12px; color:#7ea6ff; }
+  .search-box input{
+    width:100%; padding:9px 12px; border-radius:8px; border:1px solid #2b2d3a; background:#1b1c26;
+    color:#dcdfe8; font-size:13px; font-family:inherit; outline:none;
+  }
+  .tag-filters{ display:flex; flex-wrap:wrap; gap:6px; padding:10px 16px; }
+  .tag-chip{
+    font-size:11px; padding:4px 10px; border-radius:100px; background:#1b1c26; border:1px solid #2b2d3a;
+    color:#8b93b8; cursor:pointer;
+  }
+  .tag-chip.active{ background:#7ea6ff; color:#0e0f14; border-color:#7ea6ff; }
+  .snippet-list{ flex:1; overflow-y:auto; padding:0 10px; }
+  .snippet-item{ padding:12px; border-radius:10px; cursor:pointer; margin-bottom:4px; }
+  .snippet-item:hover{ background:#1b1c26; }
+  .snippet-item.active{ background:#20222e; }
+  .snippet-item .title{ font-size:13.5px; font-weight:600; }
+  .snippet-item .lang{ font-size:11px; color:#7ea6ff; margin-top:3px; }
+  .new-btn{
+    margin:0 16px 14px; padding:10px; border:none; border-radius:8px; background:#7ea6ff; color:#0e0f14;
+    font-weight:600; cursor:pointer; font-size:13px;
+  }
+  .new-btn:hover{ filter:brightness(1.1); }
+
+  .main{ flex:1; display:flex; flex-direction:column; min-width:0; }
+  .toolbar{ display:flex; gap:10px; padding:16px 24px; border-bottom:1px solid #23242e; align-items:center; }
+  .toolbar input[type=text]{
+    flex:1; background:none; border:none; outline:none; color:#dcdfe8; font-size:16px; font-weight:600; font-family:inherit;
+  }
+  .toolbar select{
+    background:#1b1c26; border:1px solid #2b2d3a; color:#dcdfe8; border-radius:8px; padding:8px 10px; font-family:inherit; font-size:12.5px;
+  }
+  .toolbar button{
+    background:#1b1c26; border:1px solid #2b2d3a; color:#dcdfe8; border-radius:8px; padding:8px 14px; cursor:pointer; font-size:12.5px;
+  }
+  .toolbar button:hover{ background:#23242e; }
+  .toolbar button.copy{ background:#7ea6ff; color:#0e0f14; border-color:#7ea6ff; font-weight:600; }
+  .toolbar button.del{ color:#ff8e8e; }
+  .tags-input{ padding:12px 24px; border-bottom:1px solid #23242e; }
+  .tags-input input{
+    width:100%; background:none; border:none; outline:none; color:#8b93b8; font-size:12.5px; font-family:inherit;
+  }
+  .code-area{ flex:1; padding:20px 24px; overflow:auto; }
+  textarea#codeEditor{
+    width:100%; height:100%; background:#0a0b0f; border:1px solid #23242e; border-radius:10px;
+    color:#dcdfe8; font-family:'Consolas','Courier New',monospace; font-size:14px; line-height:1.7;
+    padding:16px; resize:none; outline:none;
+  }
+  .empty-state{ display:flex; align-items:center; justify-content:center; flex:1; color:#5c6178; font-size:14px; }
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:#7ea6ff; color:#0e0f14; padding:9px 18px; border-radius:8px; font-size:13px; font-weight:700;
+    opacity:0; transition:opacity .2s; pointer-events:none;
+  }
+  .toast.show{ opacity:1; }
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>VAULT</h1>
+    <div class="search-box"><input type="text" id="searchInput" placeholder="Search snippets..."></div>
+  </div>
+  <div class="tag-filters" id="tagFilters"></div>
+  <button class="new-btn" id="newBtn">+ New snippet</button>
+  <div class="snippet-list" id="snippetList"></div>
+</aside>
+
+<div class="main" id="main">
+  <div class="empty-state">Select a snippet or create a new one.</div>
+</div>
+
+<div class="toast" id="toast">Copied to clipboard!</div>
+
+<script>
+(function(){
+  const KEY = 'vault-snippets';
+  const defaultSnippets = [
+    { id:1, title:'Debounce function', lang:'javascript', tags:['utility','js'],
+      code:`function debounce(fn, delay) {\n  let timer;\n  return (...args) => {\n    clearTimeout(timer);\n    timer = setTimeout(() => fn(...args), delay);\n  };\n}` },
+    { id:2, title:'Center a div (flexbox)', lang:'css', tags:['css','layout'],
+      code:`.center {\n  display: flex;\n  align-items: center;\n  justify-content: center;\n}` },
+    { id:3, title:'Fetch with timeout', lang:'javascript', tags:['utility','api'],
+      code:`async function fetchWithTimeout(url, ms = 5000) {\n  const controller = new AbortController();\n  const id = setTimeout(() => controller.abort(), ms);\n  const res = await fetch(url, { signal: controller.signal });\n  clearTimeout(id);\n  return res;\n}` }
+  ];
+
+  let snippets = JSON.parse(localStorage.getItem(KEY) || 'null') || defaultSnippets;
+  let activeId = snippets[0]?.id || null;
+  let activeTagFilter = null;
+  let nextId = Math.max(1, ...snippets.map(s=>s.id)) + 1;
+
+  function save(){ localStorage.setItem(KEY, JSON.stringify(snippets)); }
+
+  function allTags(){
+    const set = new Set();
+    snippets.forEach(s=> s.tags.forEach(t=>set.add(t)));
+    return Array.from(set);
+  }
+
+  function renderTagFilters(){
+    const el = document.getElementById('tagFilters');
+    el.innerHTML = '';
+    allTags().forEach(tag=>{
+      const chip = document.createElement('div');
+      chip.className = 'tag-chip' + (activeTagFilter===tag ? ' active':'');
+      chip.textContent = tag;
+      chip.addEventListener('click', ()=>{
+        activeTagFilter = activeTagFilter === tag ? null : tag;
+        render();
+      });
+      el.appendChild(chip);
+    });
+  }
+
+  function renderList(){
+    const q = (document.getElementById('searchInput').value || '').toLowerCase();
+    const listEl = document.getElementById('snippetList');
+    listEl.innerHTML = '';
+    const filtered = snippets.filter(s=>{
+      const matchesQ = !q || s.title.toLowerCase().includes(q) || s.code.toLowerCase().includes(q);
+      const matchesTag = !activeTagFilter || s.tags.includes(activeTagFilter);
+      return matchesQ && matchesTag;
+    });
+    filtered.forEach(s=>{
+      const div = document.createElement('div');
+      div.className = 'snippet-item' + (s.id===activeId ? ' active':'');
+      div.innerHTML = `<div class="title">${escapeHtml(s.title)}</div><div class="lang">${s.lang}</div>`;
+      div.addEventListener('click', ()=>{ activeId = s.id; render(); });
+      listEl.appendChild(div);
+    });
+  }
+
+  function renderMain(){
+    const main = document.getElementById('main');
+    const snippet = snippets.find(s=>s.id===activeId);
+    if(!snippet){
+      main.innerHTML = '<div class="empty-state">Select a snippet or create a new one.</div>';
+      return;
+    }
+    main.innerHTML = `
+      <div class="toolbar">
+        <input type="text" id="titleInput" value="${escapeAttr(snippet.title)}">
+        <select id="langSelect">
+          ${['javascript','python','css','html','bash','json','other'].map(l=>`<option value="${l}" ${l===snippet.lang?'selected':''}>${l}</option>`).join('')}
+        </select>
+        <button class="copy" id="copyBtn">📋 Copy</button>
+        <button class="del" id="delBtn">🗑 Delete</button>
+      </div>
+      <div class="tags-input">
+        <input type="text" id="tagsInput" placeholder="tags, comma, separated" value="${escapeAttr(snippet.tags.join(', '))}">
+      </div>
+      <div class="code-area">
+        <textarea id="codeEditor" spellcheck="false">${escapeHtml(snippet.code)}</textarea>
+      </div>
+    `;
+
+    document.getElementById('titleInput').addEventListener('input', (e)=>{
+      snippet.title = e.target.value; save(); renderList();
+    });
+    document.getElementById('langSelect').addEventListener('change', (e)=>{
+      snippet.lang = e.target.value; save(); renderList();
+    });
+    document.getElementById('tagsInput').addEventListener('input', (e)=>{
+      snippet.tags = e.target.value.split(',').map(t=>t.trim()).filter(Boolean);
+      save(); renderTagFilters();
+    });
+    document.getElementById('codeEditor').addEventListener('input', (e)=>{
+      snippet.code = e.target.value; save();
+    });
+    document.getElementById('copyBtn').addEventListener('click', ()=>{
+      navigator.clipboard?.writeText(snippet.code);
+      showToast();
+    });
+    document.getElementById('delBtn').addEventListener('click', ()=>{
+      if(!confirm('Delete this snippet?')) return;
+      snippets = snippets.filter(s=>s.id!==snippet.id);
+      activeId = snippets[0]?.id || null;
+      save(); render();
+    });
+  }
+
+  function escapeHtml(str){ const d=document.createElement('div'); d.textContent=str; return d.innerHTML; }
+  function escapeAttr(str){ return str.replace(/"/g,'&quot;'); }
+
+  function showToast(){
+    const t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(()=> t.classList.remove('show'), 1200);
+  }
+
+  function render(){
+    renderTagFilters();
+    renderList();
+    renderMain();
+  }
+
+  document.getElementById('newBtn').addEventListener('click', ()=>{
+    const snippet = { id: nextId++, title:'Untitled snippet', lang:'javascript', tags:[], code:'' };
+    snippets.unshift(snippet);
+    activeId = snippet.id;
+    save(); render();
+    document.getElementById('titleInput')?.focus();
+  });
+  document.getElementById('searchInput').addEventListener('input', renderList);
+
+  render();
+})();
+</script>
+</body>
+</html>

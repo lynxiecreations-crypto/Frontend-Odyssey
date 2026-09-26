@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow — Pomodoro Focus Timer</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-family:'Segoe UI', system-ui, sans-serif; color:#eef2ff; padding:24px; position:relative; overflow:hidden;
+    background:#0b1020;
+  }
+  #bg{ position:fixed; inset:0; z-index:0; }
+  .content{ position:relative; z-index:1; display:flex; flex-direction:column; align-items:center; }
+  h1{ margin:0 0 4px; font-size:20px; letter-spacing:.1em; color:#8ab4ff; }
+  p.sub{ margin:0 0 28px; color:#6b7aa8; font-size:13px; }
+  .ring-wrap{ position:relative; width:260px; height:260px; }
+  svg{ transform:rotate(-90deg); }
+  circle{ fill:none; stroke-width:8; }
+  .track{ stroke:rgba(255,255,255,.08); }
+  .progress{ stroke:#8ab4ff; stroke-linecap:round; transition:stroke-dashoffset 1s linear; }
+  .ring-content{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .timer{ font-size:52px; font-weight:200; font-variant-numeric:tabular-nums; }
+  .mode-label{ font-size:12px; letter-spacing:.1em; color:#6b7aa8; margin-top:4px; text-transform:uppercase; }
+  .controls{ display:flex; gap:12px; margin-top:26px; }
+  button{
+    font-family:inherit; font-size:13.5px; padding:12px 22px; border-radius:100px; cursor:pointer;
+    border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.05); color:#eef2ff;
+  }
+  button:hover{ background:rgba(255,255,255,.12); }
+  button.primary{ background:#8ab4ff; color:#0b1020; border-color:#8ab4ff; font-weight:700; }
+  button.primary:hover{ filter:brightness(1.08); }
+  .modes{ display:flex; gap:10px; margin-top:24px; }
+  .modes button{ font-size:12.5px; padding:8px 16px; }
+  .modes button.active{ background:#8ab4ff; color:#0b1020; border-color:#8ab4ff; }
+  .sessions{ margin-top:20px; display:flex; gap:6px; }
+  .dot{ width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,.15); }
+  .dot.filled{ background:#8ab4ff; }
+  .sound-row{ display:flex; gap:10px; margin-top:24px; align-items:center; }
+  .sound-row label{ font-size:12px; color:#6b7aa8; }
+  select{
+    background:rgba(255,255,255,.06); color:#eef2ff; border:1px solid rgba(255,255,255,.15);
+    border-radius:8px; padding:8px 10px; font-family:inherit; font-size:12.5px;
+  }
+  input[type=range]{ accent-color:#8ab4ff; width:90px; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div class="content">
+  <h1>FLOW</h1>
+  <p class="sub">Ambient focus timer with a gentle chime, and audio that responds to your session.</p>
+
+  <div class="ring-wrap">
+    <svg width="260" height="260">
+      <circle class="track" cx="130" cy="130" r="118"/>
+      <circle class="progress" id="ring" cx="130" cy="130" r="118" stroke-dasharray="741" stroke-dashoffset="0"/>
+    </svg>
+    <div class="ring-content">
+      <div class="timer" id="timer">25:00</div>
+      <div class="mode-label" id="modeLabel">FOCUS</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="startPause">Begin</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <div class="modes">
+    <button class="active" data-mins="25" data-label="FOCUS">Focus 25</button>
+    <button data-mins="5" data-label="SHORT BREAK">Break 5</button>
+    <button data-mins="15" data-label="LONG BREAK">Break 15</button>
+  </div>
+
+  <div class="sessions" id="sessions"></div>
+
+  <div class="sound-row">
+    <label>Ambient</label>
+    <select id="ambientSelect">
+      <option value="none">None</option>
+      <option value="rain">Rain</option>
+      <option value="waves">Waves</option>
+      <option value="hum">Deep hum</option>
+    </select>
+    <input type="range" id="volSlider" min="0" max="100" value="35">
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---------- Lively animated background: drifting soft blobs ----------
+  const canvas = document.getElementById('bg');
+  const ctx = canvas.getContext('2d');
+  function resize(){ canvas.width = innerWidth; canvas.height = innerHeight; }
+  window.addEventListener('resize', resize); resize();
+  const blobs = Array.from({length:5}, (_,i)=>({
+    x: Math.random()*canvas.width, y: Math.random()*canvas.height,
+    r: 150+Math.random()*150, vx:(Math.random()-.5)*.3, vy:(Math.random()-.5)*.3,
+    hue: 220 + i*20
+  }));
+  function drawBg(){
+    ctx.fillStyle = '#0b1020';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    blobs.forEach(b=>{
+      b.x+=b.vx; b.y+=b.vy;
+      if(b.x<-b.r) b.x=canvas.width+b.r;
+      if(b.x>canvas.width+b.r) b.x=-b.r;
+      if(b.y<-b.r) b.y=canvas.height+b.r;
+      if(b.y>canvas.height+b.r) b.y=-b.r;
+      const grad = ctx.createRadialGradient(b.x,b.y,0,b.x,b.y,b.r);
+      grad.addColorStop(0, `hsla(${b.hue},70%,55%,.12)`);
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+    });
+    requestAnimationFrame(drawBg);
+  }
+  drawBg();
+
+  // ---------- Ambient sound via Web Audio (procedurally generated, no files) ----------
+  let audioCtx = null;
+  let ambientNodes = [];
+  let masterGain = null;
+
+  function ensureAudio(){
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    if(!masterGain){
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = Number(document.getElementById('volSlider').value)/100 * 0.3;
+      masterGain.connect(audioCtx.destination);
+    }
+  }
+
+  function stopAmbient(){
+    ambientNodes.forEach(n=>{ try{ n.stop?.(); n.disconnect?.(); }catch(e){} });
+    ambientNodes = [];
+  }
+
+  function makeNoiseBuffer(){
+    const bufferSize = audioCtx.sampleRate * 2;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for(let i=0;i<bufferSize;i++) data[i] = Math.random()*2-1;
+    return buffer;
+  }
+
+  function startAmbient(type){
+    ensureAudio();
+    stopAmbient();
+    if(type === 'none') return;
+
+    if(type === 'rain' || type === 'waves'){
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = makeNoiseBuffer();
+      noise.loop = true;
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = type === 'rain' ? 1800 : 400;
+      filter.Q.value = 0.6;
+      const gain = audioCtx.createGain();
+      gain.gain.value = 1;
+      noise.connect(filter); filter.connect(gain); gain.connect(masterGain);
+      noise.start();
+      ambientNodes.push(noise, filter, gain);
+
+      if(type === 'waves'){
+        // slow LFO on gain for wave-like swell
+        const lfo = audioCtx.createOscillator();
+        lfo.frequency.value = 0.15;
+        const lfoGain = audioCtx.createGain();
+        lfoGain.gain.value = 0.6;
+        lfo.connect(lfoGain); lfoGain.connect(gain.gain);
+        lfo.start();
+        ambientNodes.push(lfo, lfoGain);
+      }
+    } else if(type === 'hum'){
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      osc1.frequency.value = 80; osc2.frequency.value = 120;
+      osc1.type = 'sine'; osc2.type = 'sine';
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.5;
+      osc1.connect(gain); osc2.connect(gain); gain.connect(masterGain);
+      osc1.start(); osc2.start();
+      ambientNodes.push(osc1, osc2, gain);
+    }
+  }
+
+  document.getElementById('ambientSelect').addEventListener('change', (e)=>{
+    startAmbient(e.target.value);
+  });
+  document.getElementById('volSlider').addEventListener('input', (e)=>{
+    ensureAudio();
+    masterGain.gain.value = Number(e.target.value)/100 * 0.3;
+  });
+
+  function playChime(){
+    ensureAudio();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = 528;
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+2.4);
+    osc.start(); osc.stop(audioCtx.currentTime+2.4);
+  }
+
+  // ---------- Timer logic ----------
+  const timerEl = document.getElementById('timer');
+  const ring = document.getElementById('ring');
+  const modeLabel = document.getElementById('modeLabel');
+  const startPauseBtn = document.getElementById('startPause');
+  const sessionsEl = document.getElementById('sessions');
+  const CIRC = 2 * Math.PI * 118;
+
+  let totalSeconds = 25*60;
+  let remaining = totalSeconds;
+  let running = false;
+  let intervalId = null;
+  let completedSessions = 0;
+
+  function renderSessions(){
+    sessionsEl.innerHTML = '';
+    for(let i=0;i<4;i++){
+      const d = document.createElement('div');
+      d.className = 'dot' + (i < completedSessions % 4 ? ' filled' : '');
+      sessionsEl.appendChild(d);
+    }
+  }
+
+  function render(){
+    const m = Math.floor(remaining/60).toString().padStart(2,'0');
+    const s = (remaining%60).toString().padStart(2,'0');
+    timerEl.textContent = `${m}:${s}`;
+    const fraction = remaining/totalSeconds;
+    ring.style.strokeDashoffset = CIRC * (1-fraction);
+    document.title = running ? `${m}:${s} — Flow` : 'Flow — Pomodoro Focus Timer';
+  }
+
+  function tick(){
+    if(remaining <= 0){
+      pause();
+      if(modeLabel.textContent === 'FOCUS'){ completedSessions++; renderSessions(); }
+      playChime();
+      return;
+    }
+    remaining--;
+    render();
+  }
+
+  function play(){
+    running = true;
+    startPauseBtn.textContent = 'Pause';
+    intervalId = setInterval(tick, 1000);
+  }
+  function pause(){
+    running = false;
+    startPauseBtn.textContent = 'Resume';
+    clearInterval(intervalId);
+    render();
+  }
+
+  startPauseBtn.addEventListener('click', ()=> running ? pause() : play());
+  document.getElementById('resetBtn').addEventListener('click', ()=>{
+    pause();
+    remaining = totalSeconds;
+    startPauseBtn.textContent = 'Begin';
+    render();
+  });
+
+  document.querySelectorAll('.modes button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.modes button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      totalSeconds = Number(btn.dataset.mins)*60;
+      remaining = totalSeconds;
+      modeLabel.textContent = btn.dataset.label;
+      pause();
+      startPauseBtn.textContent = 'Begin';
+      render();
+    });
+  });
+
+  renderSessions();
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Extract — Color Palette from Image</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; padding:40px 20px;
+    font-family:'Segoe UI', system-ui, sans-serif;
+    background:
+      radial-gradient(circle at 15% 20%, #ffd6e8, transparent 45%),
+      radial-gradient(circle at 85% 15%, #c9e7ff, transparent 45%),
+      #eef2f6;
+    color:#233;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  h1{ margin:0 0 4px; font-size:24px; }
+  p.sub{ margin:0 0 26px; color:#66788f; font-size:13.5px; text-align:center; max-width:440px; }
+  .card{
+    width:100%; max-width:520px; background:rgba(255,255,255,.5); backdrop-filter:blur(16px);
+    border:1px solid rgba(255,255,255,.7); border-radius:24px; padding:28px; text-align:center;
+    box-shadow:0 20px 50px rgba(60,80,120,.12);
+  }
+  .dropzone{
+    border:2px dashed rgba(90,110,140,.35); border-radius:16px; padding:40px 20px; cursor:pointer;
+    transition:border-color .2s, background .2s;
+  }
+  .dropzone:hover, .dropzone.drag{ border-color:#3a4a63; background:rgba(58,74,99,.05); }
+  .dropzone p{ margin:0; color:#5b6b85; font-size:14px; }
+  input[type=file]{ display:none; }
+  #preview{
+    max-width:100%; max-height:280px; border-radius:14px; margin-top:20px; display:none;
+    box-shadow:0 12px 30px rgba(60,80,120,.15);
+  }
+  .palette{ display:none; margin-top:22px; flex-wrap:wrap; gap:10px; justify-content:center; }
+  .swatch{
+    width:64px; height:64px; border-radius:12px; cursor:pointer; position:relative;
+    display:flex; align-items:flex-end; justify-content:center; padding-bottom:6px;
+    box-shadow:0 6px 14px rgba(0,0,0,.15);
+  }
+  .swatch span{
+    font-size:10px; background:rgba(0,0,0,.4); color:#fff; padding:2px 6px; border-radius:6px;
+  }
+  .hint{ margin-top:16px; font-size:12px; color:#8a99ad; }
+  canvas{ display:none; }
+</style>
+</head>
+<body>
+  <h1>Extract</h1>
+  <p class="sub">Drop or upload any image — pull its dominant colors as a ready-to-use palette. All processing happens locally in your browser.</p>
+
+  <div class="card">
+    <label class="dropzone" id="dropzone" for="fileInput">
+      <p>📷 Drag an image here, or click to choose one</p>
+    </label>
+    <input type="file" id="fileInput" accept="image/*">
+    <img id="preview">
+    <div class="palette" id="palette"></div>
+    <div class="hint" id="hint">Click a swatch to copy its hex code.</div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+<script>
+(function(){
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const preview = document.getElementById('preview');
+  const palette = document.getElementById('palette');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const hint = document.getElementById('hint');
+
+  ['dragover','dragleave','drop'].forEach(evt=>{
+    dropzone.addEventListener(evt, (e)=>{
+      e.preventDefault();
+      if(evt==='dragover') dropzone.classList.add('drag');
+      else dropzone.classList.remove('drag');
+    });
+  });
+  dropzone.addEventListener('drop', (e)=>{
+    const file = e.dataTransfer.files[0];
+    if(file) handleFile(file);
+  });
+  fileInput.addEventListener('change', (e)=>{
+    if(e.target.files[0]) handleFile(e.target.files[0]);
+  });
+
+  function handleFile(file){
+    const url = URL.createObjectURL(file);
+    preview.src = url;
+    preview.style.display = 'block';
+    preview.onload = ()=> extractPalette(preview);
+  }
+
+  function extractPalette(img){
+    const w = canvas.width = 120;
+    const h = canvas.height = Math.round(120 * (img.naturalHeight/img.naturalWidth));
+    ctx.drawImage(img, 0, 0, w, h);
+    const data = ctx.getImageData(0,0,w,h).data;
+
+    // simple color quantization via bucketing
+    const buckets = {};
+    for(let i=0;i<data.length;i+=4){
+      const r = Math.round(data[i]/32)*32;
+      const g = Math.round(data[i+1]/32)*32;
+      const b = Math.round(data[i+2]/32)*32;
+      const key = `${r},${g},${b}`;
+      buckets[key] = (buckets[key]||0)+1;
+    }
+    const sorted = Object.entries(buckets).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    palette.innerHTML = '';
+    palette.style.display = 'flex';
+    sorted.forEach(([key])=>{
+      const [r,g,b] = key.split(',').map(Number);
+      const hex = '#' + [r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+      const sw = document.createElement('div');
+      sw.className = 'swatch';
+      sw.style.background = hex;
+      const luminance = (0.299*r + 0.587*g + 0.114*b)/255;
+      sw.innerHTML = `<span style="color:${luminance>0.6?'#000':'#fff'}; background:transparent;">${hex}</span>`;
+      sw.addEventListener('click', ()=>{
+        navigator.clipboard?.writeText(hex);
+        hint.textContent = `Copied ${hex}!`;
+        setTimeout(()=> hint.textContent = 'Click a swatch to copy its hex code.', 1400);
+      });
+      palette.appendChild(sw);
+    });
+  }
+})();
+</script>
+</body>
+</html>

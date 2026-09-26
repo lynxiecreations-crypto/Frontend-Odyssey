@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Balance — BMI Calculator</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+    font-family:'Segoe UI', system-ui, sans-serif;
+    background:linear-gradient(160deg,#f3ecff,#e4d6ff 60%,#d6c3ff);
+    color:#3c2e5c;
+  }
+  .card{
+    width:100%; max-width:440px; background:#fff; border-radius:24px; padding:32px 30px;
+    box-shadow:0 24px 60px rgba(120,90,180,.15);
+  }
+  h1{ margin:0 0 4px; font-size:23px; font-weight:600; }
+  p.sub{ margin:0 0 26px; color:#9a86c9; font-size:13.5px; }
+  .unit-toggle{ display:flex; gap:8px; margin-bottom:22px; }
+  .unit-toggle button{
+    flex:1; padding:9px 0; border-radius:10px; border:1px solid #e0d2ff; background:#f8f3ff;
+    color:#7d5fc4; cursor:pointer; font-family:inherit; font-size:13px;
+  }
+  .unit-toggle button.active{ background:#a68cd9; color:#fff; border-color:#a68cd9; }
+  .row{ display:flex; gap:12px; margin-bottom:16px; }
+  .field{ flex:1; }
+  label{ display:block; font-size:12.5px; color:#9a86c9; margin-bottom:6px; }
+  input{
+    width:100%; padding:13px 14px; border-radius:12px; border:1px solid #e0d2ff;
+    font-size:16px; font-family:inherit; color:#3c2e5c; outline:none;
+  }
+  input:focus{ border-color:#a68cd9; box-shadow:0 0 0 3px rgba(166,140,217,.15); }
+  .gauge-wrap{ text-align:center; margin:26px 0 18px; }
+  svg{ transform:rotate(-90deg); }
+  .gauge-value{ font-size:42px; font-weight:700; color:#7d5fc4; margin-top:-90px; }
+  .gauge-category{ font-size:14px; color:#9a86c9; margin-top:4px; }
+  .scale{
+    display:flex; margin-top:24px; border-radius:10px; overflow:hidden; height:10px;
+  }
+  .scale div{ flex:1; }
+  .legend{ display:flex; justify-content:space-between; font-size:10.5px; color:#a698c9; margin-top:6px; }
+  .info{ margin-top:20px; font-size:12.5px; color:#a698c9; text-align:center; line-height:1.6; }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Balance</h1>
+  <p class="sub">A quick, private BMI estimate — nothing is stored or sent anywhere.</p>
+
+  <div class="unit-toggle">
+    <button class="active" data-unit="metric">Metric (kg/cm)</button>
+    <button data-unit="imperial">Imperial (lb/in)</button>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label id="weightLabel">Weight (kg)</label>
+      <input type="number" id="weight" placeholder="65" step="any">
+    </div>
+    <div class="field">
+      <label id="heightLabel">Height (cm)</label>
+      <input type="number" id="height" placeholder="170" step="any">
+    </div>
+  </div>
+
+  <div class="gauge-wrap">
+    <svg width="200" height="100" viewBox="0 0 200 100">
+      <path d="M 10 100 A 90 90 0 0 1 190 100" fill="none" stroke="#f0e8ff" stroke-width="14"/>
+      <path id="gaugeArc" d="M 10 100 A 90 90 0 0 1 190 100" fill="none" stroke="#a68cd9" stroke-width="14"
+            stroke-dasharray="283" stroke-dashoffset="283" stroke-linecap="round"/>
+    </svg>
+    <div class="gauge-value" id="bmiValue">—</div>
+    <div class="gauge-category" id="bmiCategory">Enter your details</div>
+  </div>
+
+  <div class="scale">
+    <div style="background:#7ec8ff;"></div>
+    <div style="background:#7effc7;"></div>
+    <div style="background:#ffd25c;"></div>
+    <div style="background:#ff8e8e;"></div>
+  </div>
+  <div class="legend"><span>Under</span><span>Healthy</span><span>Over</span><span>Obese</span></div>
+
+  <p class="info">BMI is a general screening tool, not a diagnosis. Muscle mass, age, and body composition can shift what's healthy for you — check with a doctor for real guidance.</p>
+</main>
+
+<script>
+(function(){
+  let unit = 'metric';
+  const weightInput = document.getElementById('weight');
+  const heightInput = document.getElementById('height');
+  const weightLabel = document.getElementById('weightLabel');
+  const heightLabel = document.getElementById('heightLabel');
+  const bmiValue = document.getElementById('bmiValue');
+  const bmiCategory = document.getElementById('bmiCategory');
+  const gaugeArc = document.getElementById('gaugeArc');
+
+  document.querySelectorAll('.unit-toggle button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.unit-toggle button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      unit = btn.dataset.unit;
+      weightLabel.textContent = unit==='metric' ? 'Weight (kg)' : 'Weight (lb)';
+      heightLabel.textContent = unit==='metric' ? 'Height (cm)' : 'Height (in)';
+      weightInput.placeholder = unit==='metric' ? '65' : '143';
+      heightInput.placeholder = unit==='metric' ? '170' : '67';
+      calculate();
+    });
+  });
+
+  function calculate(){
+    let w = parseFloat(weightInput.value);
+    let h = parseFloat(heightInput.value);
+    if(!w || !h){ bmiValue.textContent='—'; bmiCategory.textContent='Enter your details'; gaugeArc.style.strokeDashoffset=283; return; }
+
+    if(unit === 'imperial'){
+      w = w * 0.453592;
+      h = h * 2.54;
+    }
+    const hM = h/100;
+    const bmi = w / (hM*hM);
+    bmiValue.textContent = bmi.toFixed(1);
+
+    let category, colorPct;
+    if(bmi < 18.5){ category='Underweight'; colorPct = bmi/18.5 * 0.25; }
+    else if(bmi < 25){ category='Healthy weight'; colorPct = 0.25 + ((bmi-18.5)/6.5)*0.25; }
+    else if(bmi < 30){ category='Overweight'; colorPct = 0.5 + ((bmi-25)/5)*0.25; }
+    else { category='Obese'; colorPct = Math.min(1, 0.75 + ((bmi-30)/10)*0.25); }
+
+    bmiCategory.textContent = category;
+    const offset = 283 - (283 * Math.min(1,colorPct));
+    gaugeArc.style.strokeDashoffset = offset;
+
+    const colors = { 'Underweight':'#7ec8ff','Healthy weight':'#4fb87a','Overweight':'#e0a83c','Obese':'#e05f5f' };
+    gaugeArc.style.stroke = colors[category];
+  }
+
+  weightInput.addEventListener('input', calculate);
+  heightInput.addEventListener('input', calculate);
+})();
+</script>
+</body>
+</html>

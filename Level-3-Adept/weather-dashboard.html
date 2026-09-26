@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skyline — Live Weather Dashboard</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; font-family:'Segoe UI', system-ui, sans-serif; color:#fff;
+    display:flex; flex-direction:column; align-items:center; padding:36px 20px;
+    background:linear-gradient(160deg,#1c2b4a,#0e1830);
+    transition:background 1s ease;
+  }
+  h1{ margin:0 0 4px; font-size:24px; }
+  p.sub{ margin:0 0 26px; color:#9fb0d6; font-size:13.5px; }
+  .search{ display:flex; gap:10px; width:100%; max-width:420px; margin-bottom:26px; }
+  .search input{
+    flex:1; padding:13px 16px; border-radius:100px; border:1px solid rgba(255,255,255,.2);
+    background:rgba(255,255,255,.08); color:#fff; font-family:inherit; font-size:14.5px; outline:none;
+  }
+  .search input::placeholder{ color:#9fb0d6; }
+  .search button{
+    padding:0 20px; border-radius:100px; border:none; background:#fff; color:#1c2b4a; cursor:pointer; font-weight:600;
+  }
+  .status{ font-size:13px; color:#9fb0d6; margin-bottom:16px; min-height:18px; }
+  .main-card{
+    width:100%; max-width:420px; background:rgba(255,255,255,.08); backdrop-filter:blur(12px);
+    border:1px solid rgba(255,255,255,.15); border-radius:24px; padding:30px; text-align:center;
+    display:none;
+  }
+  .main-card.show{ display:block; }
+  .place{ font-size:18px; font-weight:600; }
+  .place small{ display:block; font-weight:400; color:#9fb0d6; font-size:12.5px; margin-top:2px; }
+  .icon{ font-size:64px; margin:14px 0; }
+  .temp{ font-size:52px; font-weight:200; }
+  .desc{ color:#cdd8f0; font-size:14.5px; margin-bottom:20px; }
+  .stats{ display:flex; justify-content:space-around; border-top:1px solid rgba(255,255,255,.15); padding-top:18px; }
+  .stat{ text-align:center; }
+  .stat .val{ font-size:16px; font-weight:600; }
+  .stat .lab{ font-size:11px; color:#9fb0d6; margin-top:2px; }
+  .forecast{ display:flex; gap:8px; margin-top:26px; width:100%; max-width:420px; overflow-x:auto; }
+  .fday{
+    flex:1; min-width:70px; background:rgba(255,255,255,.06); border-radius:14px; padding:12px 6px; text-align:center;
+  }
+  .fday .d{ font-size:11.5px; color:#9fb0d6; }
+  .fday .i{ font-size:22px; margin:6px 0; }
+  .fday .t{ font-size:13px; font-weight:600; }
+  .attribution{ margin-top:24px; font-size:11px; color:#6b7aa8; }
+  .attribution a{ color:#9fb0d6; }
+</style>
+</head>
+<body>
+  <h1>Skyline</h1>
+  <p class="sub">Live weather from Open-Meteo — no API key required.</p>
+
+  <div class="search">
+    <input type="text" id="cityInput" placeholder="Search a city..." value="Tokyo">
+    <button id="searchBtn">Search</button>
+  </div>
+  <div class="status" id="status"></div>
+
+  <div class="main-card" id="mainCard">
+    <div class="place" id="placeName">—<small id="placeRegion"></small></div>
+    <div class="icon" id="weatherIcon">☀️</div>
+    <div class="temp" id="temp">—°</div>
+    <div class="desc" id="desc">—</div>
+    <div class="stats">
+      <div class="stat"><div class="val" id="feelsLike">—</div><div class="lab">Feels like</div></div>
+      <div class="stat"><div class="val" id="humidity">—</div><div class="lab">Humidity</div></div>
+      <div class="stat"><div class="val" id="wind">—</div><div class="lab">Wind</div></div>
+    </div>
+  </div>
+
+  <div class="forecast" id="forecast"></div>
+
+  <div class="attribution">Weather data by <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a></div>
+
+<script>
+(function(){
+  const WMO_ICONS = {
+    0:['☀️','Clear sky'], 1:['🌤️','Mainly clear'], 2:['⛅','Partly cloudy'], 3:['☁️','Overcast'],
+    45:['🌫️','Fog'], 48:['🌫️','Depositing rime fog'],
+    51:['🌦️','Light drizzle'], 53:['🌦️','Drizzle'], 55:['🌧️','Dense drizzle'],
+    61:['🌧️','Slight rain'], 63:['🌧️','Rain'], 65:['🌧️','Heavy rain'],
+    71:['🌨️','Slight snow'], 73:['🌨️','Snow'], 75:['❄️','Heavy snow'],
+    80:['🌧️','Rain showers'], 81:['🌧️','Heavy showers'], 82:['⛈️','Violent showers'],
+    95:['⛈️','Thunderstorm'], 96:['⛈️','Thunderstorm + hail'], 99:['⛈️','Severe thunderstorm']
+  };
+
+  const statusEl = document.getElementById('status');
+  const mainCard = document.getElementById('mainCard');
+
+  function setStatus(msg){ statusEl.textContent = msg; }
+
+  function iconFor(code){ return (WMO_ICONS[code] || ['🌡️','Unknown'])[0]; }
+  function descFor(code){ return (WMO_ICONS[code] || ['🌡️','Unknown'])[1]; }
+
+  function updateBackground(code, isDay){
+    const body = document.body;
+    if(!isDay){
+      body.style.background = 'linear-gradient(160deg,#0b1330,#05070f)';
+    } else if([0,1].includes(code)){
+      body.style.background = 'linear-gradient(160deg,#2f6fbf,#1c2b4a)';
+    } else if([2,3,45,48].includes(code)){
+      body.style.background = 'linear-gradient(160deg,#4a5a75,#232d42)';
+    } else if(code >= 51 && code < 70 || (code>=80&&code<=82)){
+      body.style.background = 'linear-gradient(160deg,#2a3a55,#131b2e)';
+    } else if(code >= 71 && code < 78){
+      body.style.background = 'linear-gradient(160deg,#5a6a85,#2a3348)';
+    } else {
+      body.style.background = 'linear-gradient(160deg,#3a2a55,#181228)';
+    }
+  }
+
+  async function geocode(city){
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=en&format=json`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if(!data.results || !data.results.length) throw new Error('City not found');
+    return data.results[0];
+  }
+
+  async function fetchWeather(lat, lon){
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`;
+    const res = await fetch(url);
+    return res.json();
+  }
+
+  async function search(){
+    const city = document.getElementById('cityInput').value.trim();
+    if(!city) return;
+    setStatus('Searching...');
+    mainCard.classList.remove('show');
+    try{
+      const place = await geocode(city);
+      setStatus('Loading weather...');
+      const weather = await fetchWeather(place.latitude, place.longitude);
+      renderWeather(place, weather);
+      setStatus('');
+    }catch(err){
+      setStatus(err.message === 'City not found' ? 'City not found — try another spelling.' : 'Could not load weather right now.');
+    }
+  }
+
+  function renderWeather(place, weather){
+    const cur = weather.current;
+    document.getElementById('placeName').innerHTML = `${place.name}<small>${[place.admin1, place.country].filter(Boolean).join(', ')}</small>`;
+    document.getElementById('weatherIcon').textContent = iconFor(cur.weather_code);
+    document.getElementById('temp').textContent = Math.round(cur.temperature_2m) + '°C';
+    document.getElementById('desc').textContent = descFor(cur.weather_code);
+    document.getElementById('feelsLike').textContent = Math.round(cur.apparent_temperature) + '°C';
+    document.getElementById('humidity').textContent = cur.relative_humidity_2m + '%';
+    document.getElementById('wind').textContent = Math.round(cur.wind_speed_10m) + ' km/h';
+    updateBackground(cur.weather_code, cur.is_day);
+    mainCard.classList.add('show');
+
+    const forecastEl = document.getElementById('forecast');
+    forecastEl.innerHTML = '';
+    const days = weather.daily.time;
+    days.forEach((day, i)=>{
+      if(i===0) return; // skip today, already shown above
+      const d = new Date(day);
+      const label = d.toLocaleDateString(undefined, {weekday:'short'});
+      const div = document.createElement('div');
+      div.className = 'fday';
+      div.innerHTML = `
+        <div class="d">${label}</div>
+        <div class="i">${iconFor(weather.daily.weather_code[i])}</div>
+        <div class="t">${Math.round(weather.daily.temperature_2m_max[i])}° / ${Math.round(weather.daily.temperature_2m_min[i])}°</div>
+      `;
+      forecastEl.appendChild(div);
+    });
+  }
+
+  document.getElementById('searchBtn').addEventListener('click', search);
+  document.getElementById('cityInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') search(); });
+
+  search();
+})();
+</script>
+</body>
+</html>

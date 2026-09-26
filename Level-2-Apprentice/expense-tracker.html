@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ledger — Expense Tracker</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; padding:40px 20px;
+    font-family:'Segoe UI', system-ui, sans-serif;
+    background:#f4f6fb; color:#1e2436;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  h1{ margin:0 0 4px; font-size:24px; }
+  p.sub{ margin:0 0 26px; color:#6d7794; font-size:13.5px; }
+  .layout{ display:flex; gap:20px; flex-wrap:wrap; justify-content:center; width:100%; max-width:920px; }
+  .card{
+    background:#fff; border-radius:18px; padding:24px; box-shadow:0 10px 30px rgba(30,40,70,.06);
+  }
+  .summary{ width:100%; max-width:920px; display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap; }
+  .stat{ flex:1; min-width:150px; }
+  .stat .label{ font-size:12px; color:#8a92ab; margin-bottom:4px; }
+  .stat .value{ font-size:24px; font-weight:700; }
+  .stat.income .value{ color:#2ea36b; }
+  .stat.expense .value{ color:#e0555a; }
+  .stat.balance .value{ color:#3a5ccc; }
+
+  .form-card{ flex:1; min-width:280px; }
+  form{ display:flex; flex-direction:column; gap:12px; }
+  .type-toggle{ display:flex; gap:8px; }
+  .type-toggle button{
+    flex:1; padding:9px 0; border-radius:10px; border:1px solid #e2e6f0; background:#f8f9fc;
+    color:#5d6684; cursor:pointer; font-family:inherit; font-size:13px;
+  }
+  .type-toggle button.active.income{ background:#2ea36b; color:#fff; border-color:#2ea36b; }
+  .type-toggle button.active.expense{ background:#e0555a; color:#fff; border-color:#e0555a; }
+  input, select{
+    padding:11px 13px; border-radius:10px; border:1px solid #e2e6f0; font-family:inherit; font-size:14px; outline:none;
+  }
+  input:focus, select:focus{ border-color:#3a5ccc; }
+  button.add{
+    padding:12px; border:none; border-radius:10px; background:#1e2436; color:#fff; cursor:pointer;
+    font-family:inherit; font-size:14px; font-weight:600;
+  }
+  button.add:hover{ background:#2c3350; }
+
+  .list-card{ flex:1.4; min-width:320px; max-height:420px; overflow-y:auto; }
+  .list-card h3{ margin:0 0 14px; font-size:14px; color:#5d6684; }
+  .entry{
+    display:flex; justify-content:space-between; align-items:center; padding:12px 0;
+    border-bottom:1px solid #f0f1f6;
+  }
+  .entry .meta{ display:flex; flex-direction:column; }
+  .entry .cat{ font-size:13.5px; font-weight:600; }
+  .entry .date{ font-size:11.5px; color:#9aa2ba; }
+  .entry .amt{ font-weight:700; font-variant-numeric:tabular-nums; }
+  .entry .amt.income{ color:#2ea36b; }
+  .entry .amt.expense{ color:#e0555a; }
+  .entry .del{ background:none; border:none; color:#c3c9db; cursor:pointer; font-size:16px; margin-left:10px; }
+  .entry .del:hover{ color:#e0555a; }
+  .empty{ color:#9aa2ba; text-align:center; padding:30px 0; font-size:13.5px; }
+
+  .chart-card{ width:100%; max-width:920px; margin-top:20px; }
+  .bars{ display:flex; align-items:flex-end; gap:6px; height:140px; margin-top:14px; }
+  .bar-group{ flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .bar{ width:100%; max-width:22px; border-radius:4px 4px 0 0; }
+  .bar.income{ background:#2ea36b; }
+  .bar.expense{ background:#e0555a; }
+  .bar-pair{ display:flex; gap:3px; align-items:flex-end; height:110px; }
+  .bar-label{ font-size:10.5px; color:#9aa2ba; }
+</style>
+</head>
+<body>
+  <h1>Ledger</h1>
+  <p class="sub">Track income and expenses. Everything is saved locally in your browser.</p>
+
+  <div class="summary">
+    <div class="card stat income"><div class="label">Total Income</div><div class="value" id="totalIncome">$0.00</div></div>
+    <div class="card stat expense"><div class="label">Total Expenses</div><div class="value" id="totalExpense">$0.00</div></div>
+    <div class="card stat balance"><div class="label">Balance</div><div class="value" id="balance">$0.00</div></div>
+  </div>
+
+  <div class="layout">
+    <div class="card form-card">
+      <h3 style="margin-top:0; font-size:14px; color:#5d6684;">Add entry</h3>
+      <form id="form">
+        <div class="type-toggle">
+          <button type="button" class="active income" data-type="income">Income</button>
+          <button type="button" class="expense" data-type="expense">Expense</button>
+        </div>
+        <input type="text" id="cat" placeholder="Category (e.g. Groceries)" required>
+        <input type="number" id="amt" placeholder="Amount" step="0.01" min="0" required>
+        <input type="date" id="date" required>
+        <button type="submit" class="add">Add entry</button>
+      </form>
+    </div>
+
+    <div class="card list-card">
+      <h3>Recent entries</h3>
+      <div id="entryList"></div>
+    </div>
+  </div>
+
+  <div class="card chart-card">
+    <h3 style="margin:0; font-size:14px; color:#5d6684;">Last 7 days</h3>
+    <div class="bars" id="chart"></div>
+  </div>
+
+<script>
+(function(){
+  const KEY = 'ledger-entries';
+  let entries = JSON.parse(localStorage.getItem(KEY) || '[]');
+  let currentType = 'income';
+
+  const form = document.getElementById('form');
+  const catInput = document.getElementById('cat');
+  const amtInput = document.getElementById('amt');
+  const dateInput = document.getElementById('date');
+  dateInput.value = new Date().toISOString().slice(0,10);
+
+  document.querySelectorAll('.type-toggle button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.type-toggle button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      currentType = btn.dataset.type;
+    });
+  });
+
+  function save(){ localStorage.setItem(KEY, JSON.stringify(entries)); }
+  function fmt(n){ return '$' + n.toFixed(2); }
+
+  function renderSummary(){
+    const income = entries.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
+    const expense = entries.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
+    document.getElementById('totalIncome').textContent = fmt(income);
+    document.getElementById('totalExpense').textContent = fmt(expense);
+    document.getElementById('balance').textContent = fmt(income-expense);
+  }
+
+  function renderList(){
+    const listEl = document.getElementById('entryList');
+    listEl.innerHTML = '';
+    if(entries.length === 0){
+      listEl.innerHTML = '<div class="empty">No entries yet — add your first one.</div>';
+      return;
+    }
+    const sorted = [...entries].sort((a,b)=> new Date(b.date)-new Date(a.date));
+    sorted.forEach(e=>{
+      const div = document.createElement('div');
+      div.className = 'entry';
+      div.innerHTML = `
+        <div class="meta"><span class="cat">${escapeHtml(e.category)}</span><span class="date">${e.date}</span></div>
+        <div style="display:flex; align-items:center;">
+          <span class="amt ${e.type}">${e.type==='expense'?'-':'+'}${fmt(e.amount)}</span>
+          <button class="del" data-id="${e.id}">×</button>
+        </div>
+      `;
+      listEl.appendChild(div);
+    });
+    listEl.querySelectorAll('.del').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        entries = entries.filter(e=>e.id !== Number(btn.dataset.id));
+        save(); renderAll();
+      });
+    });
+  }
+
+  function renderChart(){
+    const chart = document.getElementById('chart');
+    chart.innerHTML = '';
+    const days = [];
+    for(let i=6;i>=0;i--){
+      const d = new Date();
+      d.setDate(d.getDate()-i);
+      days.push(d.toISOString().slice(0,10));
+    }
+    const maxVal = Math.max(1, ...entries.map(e=>e.amount));
+    days.forEach(day=>{
+      const dayEntries = entries.filter(e=>e.date===day);
+      const income = dayEntries.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
+      const expense = dayEntries.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
+      const group = document.createElement('div');
+      group.className = 'bar-group';
+      const incomeH = Math.max(2, (income/maxVal)*110);
+      const expenseH = Math.max(2, (expense/maxVal)*110);
+      group.innerHTML = `
+        <div class="bar-pair">
+          <div class="bar income" style="height:${incomeH}px;" title="Income: ${fmt(income)}"></div>
+          <div class="bar expense" style="height:${expenseH}px;" title="Expense: ${fmt(expense)}"></div>
+        </div>
+        <div class="bar-label">${day.slice(5)}</div>
+      `;
+      chart.appendChild(group);
+    });
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement('div'); d.textContent = str; return d.innerHTML;
+  }
+
+  function renderAll(){ renderSummary(); renderList(); renderChart(); }
+
+  form.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const category = catInput.value.trim();
+    const amount = parseFloat(amtInput.value);
+    const date = dateInput.value;
+    if(!category || !amount) return;
+    entries.push({ id: Date.now(), type: currentType, category, amount, date });
+    save();
+    catInput.value = ''; amtInput.value = '';
+    renderAll();
+  });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>

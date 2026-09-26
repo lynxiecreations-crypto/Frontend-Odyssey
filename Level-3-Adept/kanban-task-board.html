@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flowboard — Task Kanban</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; padding:34px 20px;
+    background:#f4f5f9; color:#1e2333;
+    font-family:'Segoe UI', system-ui, sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  h1{ margin:0 0 4px; font-size:23px; }
+  p.sub{ margin:0 0 26px; color:#6d7794; font-size:13.5px; }
+  .board{ display:flex; gap:18px; width:100%; max-width:1040px; flex-wrap:wrap; justify-content:center; }
+  .column{
+    flex:1; min-width:260px; background:#fff; border-radius:16px; padding:16px;
+    box-shadow:0 6px 20px rgba(30,40,70,.06);
+  }
+  .column h2{
+    font-size:13px; letter-spacing:.04em; text-transform:uppercase; margin:0 0 14px;
+    display:flex; justify-content:space-between; color:#5d6684;
+  }
+  .column h2 .count{ background:#f0f1f6; border-radius:100px; padding:2px 9px; font-size:11.5px; }
+  .cards{ display:flex; flex-direction:column; gap:10px; min-height:60px; }
+  .card{
+    background:#fafbfd; border:1px solid #eceef4; border-radius:12px; padding:13px 14px;
+    font-size:14px; cursor:grab; position:relative;
+    box-shadow:0 2px 6px rgba(30,40,70,.04);
+  }
+  .card:hover{ box-shadow:0 6px 16px rgba(30,40,70,.1); }
+  .card.dragging{ opacity:.4; }
+  .card .tag{
+    display:inline-block; font-size:10.5px; padding:2px 8px; border-radius:100px; margin-bottom:8px; font-weight:600;
+  }
+  .tag.urgent{ background:#ffe3e3; color:#c0392b; }
+  .tag.normal{ background:#e3ecff; color:#2d5be3; }
+  .tag.low{ background:#e3fff0; color:#1f9d6b; }
+  .card .due{ font-size:11.5px; color:#9aa2ba; margin-top:6px; }
+  .card .due.overdue{ color:#e0555a; font-weight:600; }
+  .del-card{ position:absolute; top:8px; right:10px; background:none; border:none; color:#c3c9db; cursor:pointer; font-size:14px; }
+  .del-card:hover{ color:#e0555a; }
+  .add-form{ margin-top:10px; }
+  .add-form input, .add-form select{
+    width:100%; margin-bottom:6px; padding:9px 11px; border:1px solid #e2e6f0; border-radius:8px;
+    font-family:inherit; font-size:13px; outline:none;
+  }
+  .add-form button{
+    width:100%; padding:9px; border:none; border-radius:8px; background:#1e2333; color:#fff; cursor:pointer; font-size:13px;
+  }
+  .add-form button:hover{ background:#2c3350; }
+  .empty-hint{ font-size:12px; color:#c3c9db; text-align:center; padding:10px 0; }
+</style>
+</head>
+<body>
+  <h1>Flowboard</h1>
+  <p class="sub">Drag tasks between columns. Set priority and due dates — everything saves locally.</p>
+
+  <div class="board" id="board"></div>
+
+<script>
+(function(){
+  const KEY = 'flowboard-tasks';
+  const defaultData = {
+    todo: [
+      { id: 1, text: 'Design new landing page', priority:'urgent', due: daysFromNow(2) },
+      { id: 2, text: 'Write onboarding emails', priority:'normal', due: daysFromNow(5) }
+    ],
+    doing: [
+      { id: 3, text: 'Fix checkout bug', priority:'urgent', due: daysFromNow(1) }
+    ],
+    done: [
+      { id: 4, text: 'Set up analytics', priority:'low', due: '' }
+    ]
+  };
+  function daysFromNow(n){ const d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+
+  let data = JSON.parse(localStorage.getItem(KEY) || 'null') || defaultData;
+  let nextId = Math.max(1, ...Object.values(data).flat().map(c=>c.id)) + 1;
+
+  const columns = [
+    { key:'todo', label:'To Do' },
+    { key:'doing', label:'In Progress' },
+    { key:'done', label:'Done' }
+  ];
+
+  const board = document.getElementById('board');
+
+  function save(){ localStorage.setItem(KEY, JSON.stringify(data)); }
+
+  function isOverdue(due){
+    if(!due) return false;
+    return new Date(due) < new Date(new Date().toDateString());
+  }
+
+  function render(){
+    board.innerHTML = '';
+    columns.forEach(col=>{
+      const colEl = document.createElement('div');
+      colEl.className = 'column';
+      colEl.innerHTML = `
+        <h2>${col.label}<span class="count">${data[col.key].length}</span></h2>
+        <div class="cards" data-col="${col.key}"></div>
+        <form class="add-form" data-col="${col.key}">
+          <input type="text" placeholder="Task description..." required>
+          <select>
+            <option value="normal">Normal priority</option>
+            <option value="urgent">Urgent</option>
+            <option value="low">Low priority</option>
+          </select>
+          <input type="date">
+          <button type="submit">+ Add task</button>
+        </form>
+      `;
+      board.appendChild(colEl);
+
+      const cardsEl = colEl.querySelector('.cards');
+      if(data[col.key].length === 0){
+        cardsEl.innerHTML = '<div class="empty-hint">No tasks — drag one here or add below.</div>';
+      }
+      data[col.key].forEach(task=>{
+        const cardEl = document.createElement('div');
+        cardEl.className = 'card';
+        cardEl.draggable = true;
+        cardEl.dataset.id = task.id;
+        const overdue = isOverdue(task.due) && col.key !== 'done';
+        cardEl.innerHTML = `
+          <span class="tag ${task.priority}">${task.priority}</span>
+          <button class="del-card">×</button>
+          <div>${escapeHtml(task.text)}</div>
+          ${task.due ? `<div class="due ${overdue?'overdue':''}">${overdue?'Overdue: ':'Due '}${task.due}</div>` : ''}
+        `;
+        cardEl.addEventListener('dragstart', ()=>{
+          cardEl.classList.add('dragging');
+          cardEl.dataset.fromCol = col.key;
+        });
+        cardEl.addEventListener('dragend', ()=> cardEl.classList.remove('dragging'));
+        cardEl.querySelector('.del-card').addEventListener('click', ()=>{
+          data[col.key] = data[col.key].filter(t=>t.id !== task.id);
+          save(); render();
+        });
+        cardsEl.appendChild(cardEl);
+      });
+
+      cardsEl.addEventListener('dragover', (e)=> e.preventDefault());
+      cardsEl.addEventListener('drop', (e)=>{
+        e.preventDefault();
+        const dragging = document.querySelector('.dragging');
+        if(!dragging) return;
+        const id = Number(dragging.dataset.id);
+        const fromCol = dragging.dataset.fromCol;
+        if(fromCol === col.key) return;
+        const idx = data[fromCol].findIndex(t=>t.id===id);
+        if(idx === -1) return;
+        const [task] = data[fromCol].splice(idx,1);
+        data[col.key].push(task);
+        save(); render();
+      });
+
+      colEl.querySelector('.add-form').addEventListener('submit', (e)=>{
+        e.preventDefault();
+        const form = e.target;
+        const text = form.querySelector('input[type=text]').value.trim();
+        const priority = form.querySelector('select').value;
+        const due = form.querySelector('input[type=date]').value;
+        if(!text) return;
+        data[col.key].push({ id: nextId++, text, priority, due });
+        save(); render();
+      });
+    });
+  }
+
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

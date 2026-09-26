@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rate — Live Currency Converter</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+    font-family:'Segoe UI', system-ui, sans-serif;
+    background:linear-gradient(160deg,#062a1f,#0a3d2b 55%,#0f5238);
+    color:#eafff2;
+  }
+  .card{
+    width:100%; max-width:440px; background:rgba(255,255,255,.06); backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.12); border-radius:22px; padding:30px 28px;
+    box-shadow:0 30px 60px rgba(0,0,0,.3);
+  }
+  h1{ margin:0 0 4px; font-size:22px; }
+  p.sub{ margin:0 0 24px; color:#9fe0bd; font-size:13.5px; }
+  .row{ display:flex; gap:10px; align-items:flex-end; margin-bottom:16px; }
+  .field{ flex:1; }
+  label{ display:block; font-size:12px; color:#9fe0bd; margin-bottom:6px; }
+  input[type=number], select{
+    width:100%; padding:13px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.15);
+    background:rgba(0,0,0,.2); color:#eafff2; font-size:15.5px; font-family:inherit; outline:none;
+  }
+  input:focus, select:focus{ border-color:#3ee08f; }
+  .swap{
+    width:42px; height:42px; border-radius:50%; border:none; background:rgba(255,255,255,.1);
+    color:#3ee08f; font-size:18px; cursor:pointer; flex:none;
+  }
+  .swap:hover{ background:rgba(62,224,143,.2); }
+  .result{
+    margin-top:10px; padding:20px; border-radius:16px; background:rgba(62,224,143,.1);
+    border:1px solid rgba(62,224,143,.3); text-align:center;
+  }
+  .result .value{ font-size:30px; font-weight:700; color:#3ee08f; }
+  .result .rate{ font-size:12.5px; color:#9fe0bd; margin-top:6px; }
+  .status{ font-size:12.5px; color:#9fe0bd; text-align:center; margin-top:14px; min-height:16px; }
+  .quick-amounts{ display:flex; gap:8px; margin-top:14px; }
+  .quick-amounts button{
+    flex:1; padding:8px 0; border-radius:8px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.05);
+    color:#eafff2; cursor:pointer; font-family:inherit; font-size:12.5px;
+  }
+  .quick-amounts button:hover{ background:rgba(255,255,255,.12); }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Rate</h1>
+  <p class="sub">Real exchange rates, updated daily — no API key needed.</p>
+
+  <div class="row">
+    <div class="field">
+      <label>Amount</label>
+      <input type="number" id="amount" value="100" min="0" step="any">
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>From</label>
+      <select id="fromCurrency"></select>
+    </div>
+    <button class="swap" id="swapBtn" title="Swap">⇄</button>
+    <div class="field">
+      <label>To</label>
+      <select id="toCurrency"></select>
+    </div>
+  </div>
+
+  <div class="quick-amounts">
+    <button data-amt="10">10</button>
+    <button data-amt="50">50</button>
+    <button data-amt="100">100</button>
+    <button data-amt="1000">1000</button>
+  </div>
+
+  <div class="result">
+    <div class="value" id="resultValue">—</div>
+    <div class="rate" id="rateInfo">Loading rates...</div>
+  </div>
+  <div class="status" id="status"></div>
+</main>
+
+<script>
+(function(){
+  const currencies = ['USD','EUR','GBP','JPY','INR','AUD','CAD','CHF','CNY','SGD','AED','ZAR','BRL','MXN','KRW'];
+  const fromSel = document.getElementById('fromCurrency');
+  const toSel = document.getElementById('toCurrency');
+  const amountInput = document.getElementById('amount');
+  const resultValue = document.getElementById('resultValue');
+  const rateInfo = document.getElementById('rateInfo');
+  const statusEl = document.getElementById('status');
+
+  let ratesCache = {}; // cache per base currency
+
+  function populate(){
+    currencies.forEach(c=>{
+      const opt1 = document.createElement('option'); opt1.value=c; opt1.textContent=c;
+      const opt2 = document.createElement('option'); opt2.value=c; opt2.textContent=c;
+      fromSel.appendChild(opt1); toSel.appendChild(opt2);
+    });
+    fromSel.value = 'USD';
+    toSel.value = 'INR';
+  }
+
+  async function fetchRates(base){
+    if(ratesCache[base] && (Date.now() - ratesCache[base].fetchedAt) < 3600000){
+      return ratesCache[base].rates;
+    }
+    statusEl.textContent = 'Fetching latest rates...';
+    const res = await fetch(`https://api.frankfurter.app/latest?from=${base}`);
+    if(!res.ok) throw new Error('Rate fetch failed');
+    const data = await res.json();
+    ratesCache[base] = { rates: data.rates, fetchedAt: Date.now() };
+    statusEl.textContent = '';
+    return data.rates;
+  }
+
+  async function convert(){
+    const from = fromSel.value, to = toSel.value;
+    const amount = parseFloat(amountInput.value) || 0;
+    if(from === to){
+      resultValue.textContent = `${amount.toFixed(2)} ${to}`;
+      rateInfo.textContent = `1 ${from} = 1 ${to}`;
+      return;
+    }
+    try{
+      const rates = await fetchRates(from);
+      const rate = rates[to];
+      if(!rate){ rateInfo.textContent = 'Rate unavailable for this pair.'; return; }
+      const converted = amount * rate;
+      resultValue.textContent = `${converted.toLocaleString(undefined,{maximumFractionDigits:2})} ${to}`;
+      rateInfo.textContent = `1 ${from} = ${rate.toFixed(4)} ${to} · rates update daily`;
+    }catch(err){
+      statusEl.textContent = 'Could not reach the exchange rate service. Try again shortly.';
+    }
+  }
+
+  document.getElementById('swapBtn').addEventListener('click', ()=>{
+    const tmp = fromSel.value;
+    fromSel.value = toSel.value;
+    toSel.value = tmp;
+    convert();
+  });
+
+  document.querySelectorAll('.quick-amounts button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      amountInput.value = btn.dataset.amt;
+      convert();
+    });
+  });
+
+  [fromSel, toSel, amountInput].forEach(el=> el.addEventListener('input', convert));
+
+  populate();
+  convert();
+})();
+</script>
+</body>
+</html>

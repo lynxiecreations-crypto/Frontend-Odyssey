@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convert — Unit Converter</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+    font-family:'Segoe UI', system-ui, sans-serif;
+    background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+    background-size:200% 200%; animation:drift 14s ease-in-out infinite;
+    color:#eaf6f8;
+  }
+  @keyframes drift{ 0%,100%{background-position:0% 50%;} 50%{background-position:100% 50%;} }
+  .card{
+    width:100%; max-width:440px; background:rgba(255,255,255,.06); backdrop-filter:blur(14px);
+    border:1px solid rgba(255,255,255,.12); border-radius:22px; padding:32px 30px;
+    box-shadow:0 30px 60px rgba(0,0,0,.35);
+  }
+  h1{ margin:0 0 4px; font-size:23px; font-weight:600; }
+  p.sub{ margin:0 0 26px; color:#9fd0d6; font-size:13.5px; }
+  .tabs{ display:flex; gap:8px; margin-bottom:22px; flex-wrap:wrap; }
+  .tab{
+    flex:1; min-width:70px; text-align:center; padding:9px 6px; border-radius:10px; cursor:pointer;
+    background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); font-size:12.5px;
+  }
+  .tab.active{ background:#37d6c4; color:#062824; font-weight:700; border-color:#37d6c4; }
+  .row{ display:flex; gap:12px; align-items:center; margin-bottom:14px; }
+  .field{ flex:1; }
+  label{ display:block; font-size:12px; color:#9fd0d6; margin-bottom:6px; }
+  input, select{
+    width:100%; padding:13px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.15);
+    background:rgba(0,0,0,.2); color:#eaf6f8; font-size:16px; font-family:inherit; outline:none;
+  }
+  input:focus, select:focus{ border-color:#37d6c4; }
+  .swap{
+    width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,.08);
+    color:#37d6c4; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    margin-top:18px; flex:none;
+  }
+  .swap:hover{ background:rgba(55,214,196,.2); }
+  .result{
+    margin-top:20px; padding:18px; border-radius:14px; background:rgba(55,214,196,.1);
+    border:1px solid rgba(55,214,196,.3); text-align:center;
+  }
+  .result .value{ font-size:28px; font-weight:700; color:#37d6c4; }
+  .result .label{ font-size:12.5px; color:#9fd0d6; margin-top:2px; }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Convert</h1>
+  <p class="sub">Length, weight, and temperature — instantly, both ways.</p>
+
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-type="length">Length</div>
+    <div class="tab" data-type="weight">Weight</div>
+    <div class="tab" data-type="temp">Temp</div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>From</label>
+      <select id="fromUnit"></select>
+    </div>
+    <button class="swap" id="swapBtn" title="Swap units">⇄</button>
+    <div class="field">
+      <label>To</label>
+      <select id="toUnit"></select>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Value</label>
+    <input type="number" id="valueInput" value="1" step="any">
+  </div>
+
+  <div class="result">
+    <div class="value" id="resultValue">—</div>
+    <div class="label" id="resultLabel">Result</div>
+  </div>
+</main>
+
+<script>
+(function(){
+  const units = {
+    length: {
+      base: 'm',
+      options: { m:1, km:1000, cm:0.01, mm:0.001, mi:1609.344, yd:0.9144, ft:0.3048, in:0.0254 }
+    },
+    weight: {
+      base: 'kg',
+      options: { kg:1, g:0.001, mg:0.000001, lb:0.453592, oz:0.0283495, ton:1000 }
+    },
+    temp: { special:true }
+  };
+
+  const tabsEl = document.getElementById('tabs');
+  const fromSel = document.getElementById('fromUnit');
+  const toSel = document.getElementById('toUnit');
+  const valueInput = document.getElementById('valueInput');
+  const resultValue = document.getElementById('resultValue');
+  const resultLabel = document.getElementById('resultLabel');
+  let currentType = 'length';
+
+  function populateSelects(type){
+    fromSel.innerHTML = ''; toSel.innerHTML = '';
+    let keys;
+    if(type === 'temp') keys = ['C','F','K'];
+    else keys = Object.keys(units[type].options);
+    keys.forEach((k,i)=>{
+      const opt1 = document.createElement('option'); opt1.value=k; opt1.textContent=k;
+      const opt2 = document.createElement('option'); opt2.value=k; opt2.textContent=k;
+      fromSel.appendChild(opt1); toSel.appendChild(opt2);
+    });
+    toSel.selectedIndex = keys.length > 1 ? 1 : 0;
+  }
+
+  function convertTemp(v, from, to){
+    let celsius;
+    if(from==='C') celsius = v;
+    else if(from==='F') celsius = (v-32)*5/9;
+    else celsius = v - 273.15;
+
+    if(to==='C') return celsius;
+    if(to==='F') return celsius*9/5+32;
+    return celsius+273.15;
+  }
+
+  function calculate(){
+    const v = parseFloat(valueInput.value);
+    if(isNaN(v)){ resultValue.textContent = '—'; return; }
+    const from = fromSel.value, to = toSel.value;
+    let result;
+    if(currentType === 'temp'){
+      result = convertTemp(v, from, to);
+    } else {
+      const conf = units[currentType].options;
+      const baseVal = v * conf[from];
+      result = baseVal / conf[to];
+    }
+    const rounded = Math.abs(result) < 0.001 ? result.toExponential(3) : parseFloat(result.toFixed(6)).toString();
+    resultValue.textContent = `${rounded} ${to}`;
+    resultLabel.textContent = `${v} ${from} = ${rounded} ${to}`;
+  }
+
+  tabsEl.addEventListener('click', (e)=>{
+    const tab = e.target.closest('.tab');
+    if(!tab) return;
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    currentType = tab.dataset.type;
+    populateSelects(currentType);
+    calculate();
+  });
+
+  document.getElementById('swapBtn').addEventListener('click', ()=>{
+    const tmp = fromSel.selectedIndex;
+    fromSel.selectedIndex = toSel.selectedIndex;
+    toSel.selectedIndex = tmp;
+    calculate();
+  });
+
+  [fromSel, toSel, valueInput].forEach(el=> el.addEventListener('input', calculate));
+
+  populateSelects(currentType);
+  calculate();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QR — Instant Code Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;
+    font-family:'Segoe UI', system-ui, sans-serif;
+    background:#fafafa; color:#1a1a1a;
+  }
+  .card{
+    width:100%; max-width:420px; background:#fff; border-radius:20px; padding:30px 28px;
+    box-shadow:0 20px 50px rgba(0,0,0,.08); border:1px solid #eee;
+  }
+  h1{ margin:0 0 4px; font-size:22px; }
+  p.sub{ margin:0 0 24px; color:#888; font-size:13.5px; }
+  textarea{
+    width:100%; padding:13px 14px; border-radius:12px; border:1px solid #e2e2e2; font-family:inherit;
+    font-size:14.5px; resize:vertical; min-height:70px; outline:none;
+  }
+  textarea:focus{ border-color:#1a1a1a; }
+  .qr-wrap{
+    display:flex; align-items:center; justify-content:center; margin:24px 0; min-height:220px;
+  }
+  #qrHolder img, #qrHolder canvas{ border-radius:8px; }
+  .swatches{ display:flex; gap:8px; margin-bottom:18px; }
+  .swatches input[type=color]{ width:34px; height:34px; border:none; border-radius:8px; cursor:pointer; padding:0; }
+  .swatches label{ font-size:12px; color:#888; align-self:center; margin-right:4px; }
+  .actions{ display:flex; gap:10px; }
+  button{
+    flex:1; padding:12px; border-radius:10px; border:none; cursor:pointer; font-family:inherit; font-size:14px;
+  }
+  button.download{ background:#1a1a1a; color:#fff; }
+  button.download:hover{ background:#333; }
+  button.copy{ background:#f0f0f0; color:#1a1a1a; }
+  button.copy:hover{ background:#e2e2e2; }
+  .toast{
+    text-align:center; font-size:12.5px; color:#2ea36b; margin-top:10px; min-height:16px;
+  }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>QR Generator</h1>
+  <p class="sub">Turn any text or link into a scannable QR code — instantly.</p>
+
+  <textarea id="input" placeholder="Type a URL, message, or anything...">https://example.com</textarea>
+
+  <div class="swatches">
+    <label>Color</label>
+    <input type="color" id="fgColor" value="#1a1a1a">
+    <input type="color" id="bgColor" value="#ffffff">
+  </div>
+
+  <div class="qr-wrap" id="qrHolder"></div>
+
+  <div class="actions">
+    <button class="download" id="downloadBtn">⬇ Download PNG</button>
+    <button class="copy" id="copyBtn">📋 Copy image</button>
+  </div>
+  <div class="toast" id="toast"></div>
+</main>
+
+<script>
+(function(){
+  const input = document.getElementById('input');
+  const holder = document.getElementById('qrHolder');
+  const fgColor = document.getElementById('fgColor');
+  const bgColor = document.getElementById('bgColor');
+  let qr = null;
+
+  function render(){
+    holder.innerHTML = '';
+    const text = input.value.trim() || ' ';
+    qr = new QRCode(holder, {
+      text: text,
+      width: 220,
+      height: 220,
+      colorDark: fgColor.value,
+      colorLight: bgColor.value,
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  }
+
+  function getCanvas(){
+    return holder.querySelector('canvas');
+  }
+
+  input.addEventListener('input', render);
+  fgColor.addEventListener('input', render);
+  bgColor.addEventListener('input', render);
+
+  document.getElementById('downloadBtn').addEventListener('click', ()=>{
+    const canvas = getCanvas();
+    if(!canvas) return;
+    const link = document.createElement('a');
+    link.download = 'qrcode.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+
+  document.getElementById('copyBtn').addEventListener('click', async ()=>{
+    const canvas = getCanvas();
+    if(!canvas) return;
+    try{
+      canvas.toBlob(async (blob)=>{
+        await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
+        showToast('Copied image to clipboard!');
+      });
+    }catch(e){
+      showToast('Copy not supported in this browser — try downloading instead.');
+    }
+  });
+
+  function showToast(msg){
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    setTimeout(()=> toast.textContent = '', 2000);
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>

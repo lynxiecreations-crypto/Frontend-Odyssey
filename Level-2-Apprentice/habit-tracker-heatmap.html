@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Streak — Habit Tracker</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; padding:40px 20px;
+    font-family:'Segoe UI', system-ui, sans-serif; background:#0d1117; color:#e6edf3;
+    display:flex; flex-direction:column; align-items:center;
+  }
+  h1{ margin:0 0 4px; font-size:23px; }
+  p.sub{ margin:0 0 26px; color:#8b949e; font-size:13.5px; }
+  .card{
+    width:100%; max-width:760px; background:#161b22; border:1px solid #30363d; border-radius:16px;
+    padding:24px; margin-bottom:18px;
+  }
+  .habit-form{ display:flex; gap:10px; margin-bottom:20px; }
+  .habit-form input{
+    flex:1; padding:11px 14px; border-radius:10px; border:1px solid #30363d; background:#0d1117;
+    color:#e6edf3; font-family:inherit; font-size:14px; outline:none;
+  }
+  .habit-form input:focus{ border-color:#58a6ff; }
+  .habit-form button{
+    padding:0 18px; border-radius:10px; border:none; background:#238636; color:#fff; cursor:pointer; font-size:14px;
+  }
+  .habit-form button:hover{ background:#2ea043; }
+  .habit{ margin-bottom:26px; }
+  .habit-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .habit-name{ font-size:15px; font-weight:600; }
+  .habit-streak{ font-size:12.5px; color:#8b949e; }
+  .habit-streak b{ color:#58a6ff; }
+  .del-habit{ background:none; border:none; color:#484f58; cursor:pointer; font-size:15px; }
+  .del-habit:hover{ color:#f85149; }
+  .heatmap{ display:grid; grid-template-columns:repeat(53, 1fr); gap:3px; }
+  .cell{
+    aspect-ratio:1; border-radius:2px; background:#161b22; border:1px solid #21262d; cursor:pointer;
+  }
+  .cell.l1{ background:#0e4429; }
+  .cell.l2{ background:#006d32; }
+  .cell.l3{ background:#26a641; }
+  .cell.l4{ background:#39d353; }
+  .cell.future{ background:#0d1117; cursor:default; border-color:#161b22; }
+  .legend{ display:flex; align-items:center; gap:6px; font-size:11px; color:#8b949e; margin-top:10px; justify-content:flex-end; }
+  .legend .cell{ width:11px; height:11px; cursor:default; }
+  .empty-state{ text-align:center; color:#8b949e; padding:40px 0; font-size:13.5px; }
+</style>
+</head>
+<body>
+  <h1>Streak</h1>
+  <p class="sub">Track daily habits with a full year at a glance — click any day to mark it done.</p>
+
+  <div class="card">
+    <form class="habit-form" id="habitForm">
+      <input type="text" id="habitName" placeholder="New habit (e.g. Read 20 minutes)" required>
+      <button type="submit">Add habit</button>
+    </form>
+    <div id="habitsList"></div>
+  </div>
+
+<script>
+(function(){
+  const KEY = 'streak-habits';
+  let habits = JSON.parse(localStorage.getItem(KEY) || '[]');
+
+  const habitsList = document.getElementById('habitsList');
+
+  function save(){ localStorage.setItem(KEY, JSON.stringify(habits)); }
+  function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+  function dateNDaysAgo(n){
+    const d = new Date();
+    d.setDate(d.getDate()-n);
+    return d.toISOString().slice(0,10);
+  }
+
+  function computeStreak(habit){
+    let streak = 0;
+    let cursor = new Date();
+    while(true){
+      const dateStr = cursor.toISOString().slice(0,10);
+      if(habit.dates.includes(dateStr)){
+        streak++;
+        cursor.setDate(cursor.getDate()-1);
+      } else if(dateStr === todayStr()) {
+        cursor.setDate(cursor.getDate()-1);
+        continue;
+      } else break;
+    }
+    return streak;
+  }
+
+  function renderHabit(habit, index){
+    const div = document.createElement('div');
+    div.className = 'habit';
+    const streak = computeStreak(habit);
+    div.innerHTML = `
+      <div class="habit-header">
+        <div>
+          <div class="habit-name">${escapeHtml(habit.name)}</div>
+          <div class="habit-streak">${habit.dates.length} total days · <b>${streak} day streak</b></div>
+        </div>
+        <button class="del-habit" data-i="${index}">×</button>
+      </div>
+      <div class="heatmap" data-i="${index}"></div>
+    `;
+    const heatmap = div.querySelector('.heatmap');
+    for(let i=370;i>=0;i--){
+      const dateStr = dateNDaysAgo(i);
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.title = dateStr;
+      if(habit.dates.includes(dateStr)){
+        cell.classList.add('l3');
+      }
+      cell.addEventListener('click', ()=> toggleDate(index, dateStr));
+      heatmap.appendChild(cell);
+    }
+    return div;
+  }
+
+  function toggleDate(index, dateStr){
+    const habit = habits[index];
+    const pos = habit.dates.indexOf(dateStr);
+    if(pos === -1) habit.dates.push(dateStr);
+    else habit.dates.splice(pos,1);
+    save();
+    render();
+  }
+
+  function escapeHtml(str){
+    const d = document.createElement('div'); d.textContent = str; return d.innerHTML;
+  }
+
+  function render(){
+    habitsList.innerHTML = '';
+    if(habits.length === 0){
+      habitsList.innerHTML = '<div class="empty-state">No habits yet — add one above to start your streak.</div>';
+      return;
+    }
+    habits.forEach((h,i)=> habitsList.appendChild(renderHabit(h,i)));
+    habitsList.querySelectorAll('.del-habit').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        habits.splice(Number(btn.dataset.i),1);
+        save(); render();
+      });
+    });
+  }
+
+  document.getElementById('habitForm').addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const nameInput = document.getElementById('habitName');
+    const name = nameInput.value.trim();
+    if(!name) return;
+    habits.push({ name, dates: [] });
+    nameInput.value = '';
+    save(); render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

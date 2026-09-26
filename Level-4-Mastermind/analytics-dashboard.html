@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pulse — Analytics Dashboard</title>
+<style>
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; background:#0a0e17; color:#e6ecff;
+    font-family:'Segoe UI', system-ui, sans-serif; padding:28px 24px; position:relative; overflow-x:hidden;
+  }
+  #bg{ position:fixed; inset:0; z-index:0; opacity:.6; }
+  .wrap{ position:relative; z-index:1; max-width:1080px; margin:0 auto; }
+  header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:12px; }
+  h1{ margin:0; font-size:21px; letter-spacing:.02em; }
+  .live-badge{
+    display:flex; align-items:center; gap:6px; font-size:12px; color:#7effc7; background:rgba(126,255,199,.1);
+    padding:6px 12px; border-radius:100px; border:1px solid rgba(126,255,199,.3);
+  }
+  .dot-pulse{ width:7px; height:7px; border-radius:50%; background:#7effc7; animation:pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+  .stat-row{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:20px; }
+  .stat-card{
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:18px 20px;
+  }
+  .stat-card .label{ font-size:12px; color:#8b93b8; margin-bottom:8px; }
+  .stat-card .value{ font-size:26px; font-weight:700; }
+  .stat-card .delta{ font-size:12px; margin-top:6px; }
+  .delta.up{ color:#7effc7; }
+  .delta.down{ color:#ff8e8e; }
+
+  .charts-row{ display:grid; grid-template-columns:2fr 1fr; gap:16px; margin-bottom:16px; }
+  @media (max-width:760px){ .charts-row{ grid-template-columns:1fr; } }
+  .panel{
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:20px;
+  }
+  .panel h3{ margin:0 0 16px; font-size:13px; color:#8b93b8; text-transform:uppercase; letter-spacing:.04em; }
+  canvas{ width:100%; display:block; }
+
+  .legend{ display:flex; gap:16px; margin-top:10px; font-size:12px; color:#8b93b8; }
+  .legend span{ display:flex; align-items:center; gap:6px; }
+  .legend .sw{ width:10px; height:10px; border-radius:3px; }
+
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  th{ text-align:left; color:#8b93b8; font-weight:500; font-size:11.5px; text-transform:uppercase; padding-bottom:10px; }
+  td{ padding:10px 0; border-top:1px solid rgba(255,255,255,.06); }
+  .bar-cell{ background:rgba(126,166,255,.15); border-radius:4px; height:8px; position:relative; overflow:hidden; }
+  .bar-fill{ background:#7ea6ff; height:100%; border-radius:4px; }
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div class="wrap">
+  <header>
+    <h1>Pulse Analytics</h1>
+    <div class="live-badge"><span class="dot-pulse"></span> Live — simulated real-time data</div>
+  </header>
+
+  <div class="stat-row" id="statRow"></div>
+
+  <div class="charts-row">
+    <div class="panel">
+      <h3>Traffic over time</h3>
+      <canvas id="lineChart" width="640" height="220"></canvas>
+      <div class="legend">
+        <span><span class="sw" style="background:#7ea6ff;"></span>Visitors</span>
+        <span><span class="sw" style="background:#7effc7;"></span>Signups</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Traffic sources</h3>
+      <canvas id="donutChart" width="220" height="220"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Top pages</h3>
+    <table id="pagesTable"></table>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---------- particle background ----------
+  const bg = document.getElementById('bg');
+  const bgCtx = bg.getContext('2d');
+  function resizeBg(){ bg.width = innerWidth; bg.height = innerHeight; }
+  window.addEventListener('resize', resizeBg); resizeBg();
+  const particles = Array.from({length:70}, ()=>({
+    x:Math.random()*bg.width, y:Math.random()*bg.height,
+    vx:(Math.random()-.5)*.3, vy:(Math.random()-.5)*.3, r:Math.random()*1.4+.4
+  }));
+  function drawBg(){
+    bgCtx.fillStyle = '#0a0e17';
+    bgCtx.fillRect(0,0,bg.width,bg.height);
+    particles.forEach(p=>{
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0||p.x>bg.width) p.vx*=-1;
+      if(p.y<0||p.y>bg.height) p.vy*=-1;
+      bgCtx.beginPath();
+      bgCtx.fillStyle = 'rgba(126,166,255,.4)';
+      bgCtx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      bgCtx.fill();
+    });
+    for(let i=0;i<particles.length;i++){
+      for(let j=i+1;j<particles.length;j++){
+        const dx=particles[i].x-particles[j].x, dy=particles[i].y-particles[j].y;
+        const d = Math.sqrt(dx*dx+dy*dy);
+        if(d<90){
+          bgCtx.strokeStyle = `rgba(126,166,255,${(1-d/90)*.15})`;
+          bgCtx.beginPath(); bgCtx.moveTo(particles[i].x,particles[i].y); bgCtx.lineTo(particles[j].x,particles[j].y); bgCtx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(drawBg);
+  }
+  drawBg();
+
+  // ---------- simulated live data ----------
+  let visitors = 12400, signups = 340, conversion = 2.74, revenue = 18230;
+  const stats = [
+    { key:'visitors', label:'Visitors today', value: visitors, delta: 4.2, fmt:v=>Math.round(v).toLocaleString() },
+    { key:'signups', label:'New signups', value: signups, delta: 1.8, fmt:v=>Math.round(v).toLocaleString() },
+    { key:'conversion', label:'Conversion rate', value: conversion, delta: -0.3, fmt:v=>v.toFixed(2)+'%' },
+    { key:'revenue', label:'Revenue', value: revenue, delta: 6.1, fmt:v=>'$'+Math.round(v).toLocaleString() }
+  ];
+
+  function renderStats(){
+    const row = document.getElementById('statRow');
+    row.innerHTML = '';
+    stats.forEach(s=>{
+      const div = document.createElement('div');
+      div.className = 'stat-card';
+      div.innerHTML = `
+        <div class="label">${s.label}</div>
+        <div class="value">${s.fmt(s.value)}</div>
+        <div class="delta ${s.delta>=0?'up':'down'}">${s.delta>=0?'▲':'▼'} ${Math.abs(s.delta)}% vs yesterday</div>
+      `;
+      row.appendChild(div);
+    });
+  }
+
+  // line chart data: last 24 points
+  const visitorHistory = Array.from({length:24}, (_,i)=> 300 + Math.sin(i/3)*100 + Math.random()*80);
+  const signupHistory = Array.from({length:24}, (_,i)=> 8 + Math.sin(i/4)*4 + Math.random()*5);
+
+  const lineCanvas = document.getElementById('lineChart');
+  const lctx = lineCanvas.getContext('2d');
+
+  function drawLineChart(){
+    const w = lineCanvas.width, h = lineCanvas.height;
+    lctx.clearRect(0,0,w,h);
+    const maxV = Math.max(...visitorHistory) * 1.2;
+    const maxS = Math.max(...signupHistory) * 1.2;
+
+    function plot(data, max, color){
+      lctx.beginPath();
+      data.forEach((v,i)=>{
+        const x = (i/(data.length-1))*w;
+        const y = h - (v/max)*h*0.85 - 10;
+        i===0 ? lctx.moveTo(x,y) : lctx.lineTo(x,y);
+      });
+      lctx.strokeStyle = color;
+      lctx.lineWidth = 2.5;
+      lctx.stroke();
+
+      // gradient fill
+      const grad = lctx.createLinearGradient(0,0,0,h);
+      grad.addColorStop(0, color+'33');
+      grad.addColorStop(1, color+'00');
+      lctx.lineTo(w,h); lctx.lineTo(0,h); lctx.closePath();
+      lctx.fillStyle = grad;
+      lctx.fill();
+    }
+
+    // grid lines
+    lctx.strokeStyle = 'rgba(255,255,255,.05)';
+    for(let i=0;i<5;i++){
+      const y = (h/4)*i;
+      lctx.beginPath(); lctx.moveTo(0,y); lctx.lineTo(w,y); lctx.stroke();
+    }
+
+    plot(visitorHistory, maxV, '#7ea6ff');
+    plot(signupHistory, maxS, '#7effc7');
+  }
+
+  // donut chart: traffic sources
+  const donutCanvas = document.getElementById('donutChart');
+  const dctx = donutCanvas.getContext('2d');
+  const sources = [
+    { label:'Organic', value:42, color:'#7ea6ff' },
+    { label:'Direct', value:27, color:'#7effc7' },
+    { label:'Social', value:18, color:'#ffd25c' },
+    { label:'Referral', value:13, color:'#f472b6' }
+  ];
+  function drawDonut(){
+    const w = donutCanvas.width, h = donutCanvas.height;
+    const cx=w/2, cy=h/2, radius=Math.min(w,h)/2-10, inner=radius*0.6;
+    dctx.clearRect(0,0,w,h);
+    let start = -Math.PI/2;
+    const total = sources.reduce((s,x)=>s+x.value,0);
+    sources.forEach(seg=>{
+      const angle = (seg.value/total)*Math.PI*2;
+      dctx.beginPath();
+      dctx.arc(cx,cy,radius,start,start+angle);
+      dctx.arc(cx,cy,inner,start+angle,start,true);
+      dctx.closePath();
+      dctx.fillStyle = seg.color;
+      dctx.fill();
+      start += angle;
+    });
+    dctx.fillStyle = '#e6ecff';
+    dctx.font = '600 20px Segoe UI';
+    dctx.textAlign = 'center';
+    dctx.fillText(total+'%', cx, cy+7);
+  }
+
+  // pages table
+  const pages = [
+    { path:'/pricing', views: 8420, pct: 82 },
+    { path:'/blog/launch-week', views: 6210, pct: 60 },
+    { path:'/docs/getting-started', views: 5030, pct: 49 },
+    { path:'/', views: 4110, pct: 40 },
+    { path:'/changelog', views: 2210, pct: 21 }
+  ];
+  function renderTable(){
+    const table = document.getElementById('pagesTable');
+    table.innerHTML = `
+      <tr><th>Page</th><th>Views</th><th style="width:40%;">Relative traffic</th></tr>
+      ${pages.map(p=>`
+        <tr>
+          <td>${p.path}</td>
+          <td>${p.views.toLocaleString()}</td>
+          <td><div class="bar-cell"><div class="bar-fill" style="width:${p.pct}%;"></div></div></td>
+        </tr>
+      `).join('')}
+    `;
+  }
+
+  // simulate live updates
+  function tick(){
+    stats[0].value += (Math.random()-0.4)*20;
+    stats[1].value += (Math.random()-0.4)*2;
+    stats[2].value += (Math.random()-0.5)*0.05;
+    stats[3].value += (Math.random()-0.3)*40;
+    visitorHistory.shift(); visitorHistory.push(300+Math.sin(Date.now()/3000)*100+Math.random()*80);
+    signupHistory.shift(); signupHistory.push(8+Math.sin(Date.now()/4000)*4+Math.random()*5);
+    renderStats();
+    drawLineChart();
+  }
+
+  renderStats();
+  drawLineChart();
+  drawDonut();
+  renderTable();
+  setInterval(tick, 2200);
+})();
+</script>
+</body>
+</html>
